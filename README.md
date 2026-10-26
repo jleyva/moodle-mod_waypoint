@@ -107,10 +107,10 @@ server-side with `get_string()` and sent down in the payload. Worth copying.
 
 ---
 
-## Four things that will bite you
+## Five things that will bite you
 
 None of these is in the documentation; all of them cost real time while building
-this. [WALKTHROUGH.md](WALKTHROUGH.md#6-four-traps) explains each one in full,
+this. [WALKTHROUGH.md](WALKTHROUGH.md#6-five-traps) explains each one in full,
 with the evidence.
 
 1. **Class-level `requirelogin` is silently ignored** — and this one is a security
@@ -126,6 +126,10 @@ with the evidence.
 4. **Shims need `$CFG->routerconfigured = true`.** Through the `/r.php/…` fallback,
    Apache matches the trailing `.php` and answers before the router sees the
    request. Core's own example shims behave identically.
+5. **The design system `Switch` cannot be clicked by Behat.** Its real `<input>`
+   is visually hidden and `.mds-switch` is not positioned, so the input lands
+   outside the control. Both `I click on ... "checkbox"` and `I set the field ...
+   to` throw `ElementClickInterceptedException`. Click the label text instead.
 
 
 ## Decisions taken without documentation
@@ -161,6 +165,7 @@ wins.
 | **`array_of_things` emits a map and a dangling `$ref`** | Reading the generated `openapi.json` and finding a `$ref` to a component that was never defined. My conclusion that it is wrong for lists is *my reading of its behaviour*, not an official position — if core intended a map, `classes/route/schema/array_of.php` is unnecessary. |
 | **A Mustache comment ends at the first `}}`** | The docblock in `view.mustache` described the fallback and mentioned the `{{#react}}` tag by name. Its closing braces terminated the comment, and the rest of the docblock — prose and example JSON — rendered onto the page for every student. Never write a tag inside a template docblock. |
 | **`install.xml`'s `PATH` is relative to `dirroot`** | `mod/waypoint/db`, not `public/mod/waypoint/db`. The installer rejects it otherwise. |
+| **The design system `Switch` cannot be clicked by Behat** | Its real `<input>` is visually hidden (1x1px, clipped) with the visible control in a sibling `<label for=...>`, and `.mds-switch` sets no `position: relative` — so the absolutely positioned input lands outside the control. Both `I click on ... "checkbox"` and `I set the field ... to` call `click()` on that input and get `ElementClickInterceptedException`. Click the label text instead. |
 | **`tsc --noEmit -p tsconfig.json` is not a usable typecheck** | 40 x `TS6305` from the `composite` project reference, for core's files as much as this plugin's. See the build notes in [WALKTHROUGH.md](WALKTHROUGH.md#2-react). |
 
 ### My own choices, with no precedent in core
@@ -235,6 +240,27 @@ npx jest public/mod/waypoint                             # 21 tests
 The PHP tests extend `\core\tests\router\route_testcase`, which gives you
 `process_api_request()`, `assert_valid_response()`,
 `assert_access_denied_response()` and `assert_route_required_scopes()`.
+
+Behat, once the site is configured for it:
+
+```bash
+php public/admin/tool/behat/cli/run.php --tags=@mod_waypoint   # 16 scenarios
+```
+
+Every interactive scenario is `@javascript`, because the UI is React. One feature,
+`waypoint_nojs.feature`, is deliberately *not* tagged: it asserts that the
+server-rendered fallback inside the `{{#react}}` helper is readable without
+JavaScript and that the interactive controls are absent.
+
+You do not need to write waits for the REST calls. `core/fetch` wraps every
+request in a `Pending`, which drives `M.util.js_pending()`, and Behat's
+`wait_for_pending_js()` already runs after each click and navigation. Adding
+sleeps would only hide a future call that bypassed the repository.
+
+`tests/behat/behat_mod_waypoint.php` resolves the routed report page through
+`util::get_path_for_callable()` rather than hardcoding a URL, so the scenarios
+work whether or not the site under test has `$CFG->routerconfigured` set — the
+two produce different URLs.
 
 The jest tests mock `@moodlehq/design-system`, which is ESM-only and cannot be
 resolved by jest's CJS resolver — the same workaround core uses in

@@ -45,24 +45,36 @@ class mod_waypoint_generator extends testing_module_generator {
     /**
      * Add a waypoint to an activity.
      *
-     * @param int $waypointid The activity instance id.
-     * @param string $title The waypoint title.
-     * @param null|int $sortorder The position, defaulting to the end of the list.
+     * Takes a record rather than positional arguments, because Behat's
+     * generator calls every create_* method with a single array of column
+     * values read straight from the Gherkin table.
+     *
+     * @param array|stdClass $record Needs 'waypointid' and 'title'; 'sortorder'
+     *      defaults to the end of the list.
      * @return stdClass The new waypoint_item record.
      */
-    public function create_item(int $waypointid, string $title, ?int $sortorder = null): stdClass {
+    public function create_item(array|stdClass $record): stdClass {
         global $DB;
 
-        $sortorder ??= (int) $DB->get_field_sql(
+        $record = (object) (array) $record;
+
+        if (empty($record->waypointid)) {
+            throw new coding_exception('A waypoint item needs a waypointid.');
+        }
+        if (!isset($record->title) || trim((string) $record->title) === '') {
+            throw new coding_exception('A waypoint item needs a title.');
+        }
+
+        $record->sortorder ??= (int) $DB->get_field_sql(
             'SELECT MAX(sortorder) FROM {waypoint_item} WHERE waypointid = :waypointid',
-            ['waypointid' => $waypointid],
+            ['waypointid' => $record->waypointid],
         ) + 1;
 
         $now = time();
         $id = $DB->insert_record('waypoint_item', (object) [
-            'waypointid' => $waypointid,
-            'title' => $title,
-            'sortorder' => $sortorder,
+            'waypointid' => $record->waypointid,
+            'title' => $record->title,
+            'sortorder' => $record->sortorder,
             'timecreated' => $now,
             'timemodified' => $now,
         ]);

@@ -59,9 +59,9 @@ final class items_test extends route_testcase {
         /** @var \mod_waypoint_generator $modgenerator */
         $modgenerator = $generator->get_plugin_generator('mod_waypoint');
         $items = [
-            $modgenerator->create_item($activity->id, 'Read the brief'),
-            $modgenerator->create_item($activity->id, 'Draft an outline'),
-            $modgenerator->create_item($activity->id, 'Submit for review'),
+            $modgenerator->create_item(['waypointid' => $activity->id, 'title' => 'Read the brief']),
+            $modgenerator->create_item(['waypointid' => $activity->id, 'title' => 'Draft an outline']),
+            $modgenerator->create_item(['waypointid' => $activity->id, 'title' => 'Submit for review']),
         ];
 
         $student = $generator->create_and_enrol($course, 'student');

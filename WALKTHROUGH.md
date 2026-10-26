@@ -244,6 +244,20 @@ same convention in `block_timeline`. It is worth keeping, because that is exactl
 the seam where the old external-functions API used to plug in — if Moodle changes
 how you call the server again, you change one file.
 
+There is a second, less obvious payoff. `Fetch` wraps every request in a
+`Pending`:
+
+```ts
+const resolvePending = new Pending(`Requesting ${component}/${action} with ${method}`);
+```
+
+`Pending` drives `M.util.js_pending()` / `js_complete()`, and Behat calls
+`wait_for_pending_js()` after every click, navigation and form submission. So an
+acceptance test that ticks a waypoint waits for the `PUT` and the re-render **by
+itself** — no explicit waits, no sleeps. Routing all traffic through one module
+that uses `Fetch` is what buys that; a call made with bare `fetch()` would be
+invisible to Behat and would make the tests flaky.
+
 ### Language strings
 
 Components read strings with React's `use()` hook, inside a `Suspense` boundary
@@ -371,6 +385,11 @@ the route and every link follows. `core_choice` cannot do this — it writes
 It appears under **More** in the activity's secondary navigation, for anybody
 with `mod/waypoint:viewreport`. `tests/lib_test.php` asserts that a teacher gets
 it, that it points at the route, and that a student does not.
+
+`tests/behat/behat_mod_waypoint.php` resolves the same page the same way, so
+`I am on the "Checklist" "mod_waypoint > Report" page` works whether or not the
+site under test has `$CFG->routerconfigured` set. Hardcoding the URL there would
+pass locally and fail in CI, or the reverse.
 
 ### The shim
 
@@ -574,7 +593,7 @@ precisely because the payload is always complete.
 
 ---
 
-## 6. Four traps
+## 6. Five traps
 
 None of these is in the documentation. All of them cost real time.
 
@@ -637,6 +656,38 @@ identically.
 
 Which makes sense — the whole purpose of a shim is to catch a legacy URL, and a
 legacy URL only reaches the router if the server sends it there.
+
+### 5. The design system `Switch` cannot be clicked by Behat
+
+Its real `<input>` is visually hidden — 1x1px and clipped — with the visible
+control in a sibling `<label for=...>`:
+
+```css
+.mds-switch-input { position: absolute; width: 1px; height: 1px; clip: rect(0, 0, 0, 0); }
+.mds-switch       { display: flex; align-self: start; }   /* note: no position: relative */
+```
+
+Because the wrapper is not positioned, that absolutely positioned input resolves
+against some distant ancestor and lands outside the control — in our case at
+x=2329, well away from the switch the user sees.
+
+Both obvious Behat steps fail with `ElementClickInterceptedException`, because
+`behat_form_checkbox::set_value()` calls `click()` on the input:
+
+```gherkin
+And I click on "Hide completed" "checkbox"      # fails
+And I set the field "Hide completed" to "1"     # fails too
+```
+
+Click the label text, which is what a person clicks:
+
+```gherkin
+And I click on "Hide completed" "text"
+```
+
+Core's Edit mode switch is the same component and does work with
+`I set the field`, which is why this is easy to get wrong — but that works
+because of the layout around it, not by design.
 
 ### Bonus: the `getString` mock in Jest
 

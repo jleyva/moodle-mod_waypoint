@@ -50,7 +50,7 @@ final class custom_completion_test extends advanced_testcase {
         $modgenerator = $generator->get_plugin_generator('mod_waypoint');
         $items = [];
         for ($i = 1; $i <= $itemcount; $i++) {
-            $items[] = $modgenerator->create_item($activity->id, "Waypoint {$i}");
+            $items[] = $modgenerator->create_item(['waypointid' => $activity->id, 'title' => "Waypoint {$i}"]);
         }
 
         $student = $generator->create_and_enrol($course, 'student');
