@@ -29,7 +29,6 @@ Feature: Teachers manage the waypoint list through the REST API
       | Checklist | Read the assignment brief |
       | Checklist | Draft an outline          |
       | Checklist | Submit for review         |
-    And I change window size to "large"
 
   Scenario: Adding a waypoint sends a POST and the new item persists
     Given I am on the "Checklist" "waypoint activity" page logged in as "teacher1"

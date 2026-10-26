@@ -29,7 +29,6 @@ Feature: Teachers see everyone's progress on the routed report page
       | Checklist | Read the assignment brief |
       | Checklist | Draft an outline          |
       | Checklist | Submit for review         |
-    And I change window size to "large"
 
   Scenario: The report is reachable from the activity navigation
     Given I am on the "Checklist" "waypoint activity" page logged in as "teacher1"

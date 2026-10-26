@@ -24,20 +24,20 @@ Feature: Students tick off waypoints and see their progress
       | Checklist | Read the assignment brief |
       | Checklist | Draft an outline          |
       | Checklist | Submit for review         |
-    And I change window size to "large"
 
-  Scenario: Ticking a waypoint updates the progress summary
+  # One journey rather than three scenarios: what a student sees, ticking a
+  # waypoint, and the tick surviving a reload. Splitting these meant paying for
+  # a browser restart and a database reset to re-reach the same state, since
+  # core restarts the Mink session before every @javascript scenario.
+  Scenario: A student ticks a waypoint and it is remembered
     Given I am on the "Checklist" "waypoint activity" page logged in as "student1"
     Then I should see "0 of 3"
+    And "Add waypoint" "button" should not exist
+    And "Delete waypoint" "button" should not exist
     When I click on "Read the assignment brief" "checkbox"
     Then I should see "1 of 3"
     And I should see "Done" in the "Read the assignment brief" "list_item"
-
-  Scenario: A ticked waypoint survives a page reload
-    Given I am on the "Checklist" "waypoint activity" page logged in as "student1"
-    When I click on "Read the assignment brief" "checkbox"
-    And I should see "1 of 3"
-    And I reload the page
+    When I reload the page
     Then I should see "1 of 3"
     And the field "Read the assignment brief" matches value "1"
 
@@ -70,7 +70,3 @@ Feature: Students tick off waypoints and see their progress
     When I am on the "Checklist" "waypoint activity" page logged in as "teacher1"
     Then I should see "0 of 3"
 
-  Scenario: A student cannot edit the waypoint list
-    Given I am on the "Checklist" "waypoint activity" page logged in as "student1"
-    Then "Add waypoint" "button" should not exist
-    And "Delete waypoint" "button" should not exist

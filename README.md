@@ -257,6 +257,13 @@ request in a `Pending`, which drives `M.util.js_pending()`, and Behat's
 `wait_for_pending_js()` already runs after each click and navigation. Adding
 sleeps would only hide a future call that bypassed the repository.
 
+There is deliberately no `I change window size to "large"` step. Core already
+resizes every scenario to medium (1024x768) in `behat_hooks.php`, explicitly "to
+avoid responsive problems", so adding a resize overrides the size core
+standardises on rather than helping. `block_timeline` needs one because its
+layout genuinely reflows; a list of checkboxes does not. All 16 scenarios pass at
+the default.
+
 `tests/behat/behat_mod_waypoint.php` resolves the routed report page through
 `util::get_path_for_callable()` rather than hardcoding a URL, so the scenarios
 work whether or not the site under test has `$CFG->routerconfigured` set — the
