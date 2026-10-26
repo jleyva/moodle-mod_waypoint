@@ -1,0 +1,65 @@
+{{!
+    This file is part of Moodle - http://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_waypoint/view
+
+    Mount point for the Waypoint React app.
+
+    The markup inside the react helper section is a read-only fallback. React
+    replaces it when it mounts, so a reader with no JavaScript still sees the
+    list and their progress — they just cannot tick anything. Keep it in step
+    with Waypoint.tsx if the rendered output changes.
+
+    Careful: a Mustache comment ends at the FIRST closing double brace, so a
+    tag written out inside this docblock would terminate it early and dump the
+    rest of the text onto the page. Never write one here.
+
+    Example context (json):
+    {
+        "reactprops": "{\"cmid\": 42, \"initialstate\": { ... } }",
+        "hasitems": true,
+        "items": [{"id": 1, "title": "Read the brief", "done": true}],
+        "countlabel": "1 of 1",
+        "percentage": 100
+    }
+}}
+{{#react}}
+{
+    "component": "@moodle/lms/mod_waypoint/Waypoint",
+    "class": "mod-waypoint",
+    "props": {{{reactprops}}}
+}
+<div class="mod-waypoint-fallback">
+    <p class="fw-bold mb-1">{{#str}}progresstitle, mod_waypoint{{/str}} &mdash; {{countlabel}}</p>
+    <div class="progress mb-3" role="progressbar" aria-valuenow="{{percentage}}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" style="width: {{percentage}}%"></div>
+    </div>
+    {{#hasitems}}
+        <ul class="list-unstyled">
+            {{#items}}
+                <li class="mb-2">
+                    <input type="checkbox" class="form-check-input me-2" disabled {{#done}}checked{{/done}}>
+                    {{title}}
+                </li>
+            {{/items}}
+        </ul>
+    {{/hasitems}}
+    {{^hasitems}}
+        <p class="text-muted">{{#str}}nowaypoints, mod_waypoint{{/str}}</p>
+    {{/hasitems}}
+</div>
+{{/react}}

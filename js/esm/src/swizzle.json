@@ -1,0 +1,22 @@
+{
+  "Waypoint": {
+    "eject": "prohibited",
+    "wrap": "risky"
+  },
+  "ProgressSummary": {
+    "eject": "safe",
+    "wrap": "safe"
+  },
+  "ItemList": {
+    "eject": "safe",
+    "wrap": "safe"
+  },
+  "ItemRow": {
+    "eject": "safe",
+    "wrap": "safe"
+  },
+  "AddItemForm": {
+    "eject": "safe",
+    "wrap": "safe"
+  }
+}
