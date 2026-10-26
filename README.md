@@ -7,7 +7,6 @@ afternoon:
 | | Where to look |
 |---|---|
 | **Routing subsystem** — REST endpoints, a routed HTML page, and a legacy-URL shim | `classes/route/` |
-| **Secondary navigation** — the report link, with its URL asked of the router | `lib.php` |
 | **REST API** (`/api/rest/v2/…`) with OAuth2 scopes and generated OpenAPI | `classes/route/api/`, `classes/route/scope/` |
 | **React** (TypeScript, built with esbuild via grunt) | `js/esm/src/` |
 | **Moodle Design System** components | `js/esm/src/*.tsx` |
