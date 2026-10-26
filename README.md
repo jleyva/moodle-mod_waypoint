@@ -1,7 +1,7 @@
 # mod_waypoint
 
 A small Moodle activity module that exists to demonstrate four things that come
-together for the first time in **Moodle 5.3**, in one plugin you can read in an
+together for the first time in **Moodle 5.X**, in one plugin you can read in an
 afternoon:
 
 | | Where to look |
@@ -97,7 +97,7 @@ Using `@moodlehq/design-system` 5.3.0: `Checkbox`, `ProgressBar`, `Button`,
 `Badge`, `Switch`.
 
 Text fields are plain Bootstrap `form-control` — the design system had no `Input`
-component at 5.3.0 (it arrives in 5.5.0, along with `Alert`, `Tag` and `Textarea`).
+component at 5.3.0 (it arrives in 6.x, along with `Alert`, `Tag` and `Textarea`).
 
 `ProgressBar` deliberately will not derive its count text from `value`/`max`:
 word order and plural rules belong to the language pack. So `countlabel` is built
