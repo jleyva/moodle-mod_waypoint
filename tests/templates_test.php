@@ -44,10 +44,10 @@ final class templates_test extends advanced_testcase {
             'view' => [
                 'mod_waypoint/view',
                 [
-                    'reactprops' => '{"cmid":543,"initialstate":{}}',
+                    'reactprops' => '{"activityId":543,"initialActivity":{},"initialItems":{}}',
                     'items' => [
-                        ['id' => 1, 'title' => 'Read the brief', 'sortorder' => 1, 'done' => true],
-                        ['id' => 2, 'title' => 'Draft an outline', 'sortorder' => 2, 'done' => false],
+                        ['id' => 1, 'title' => 'Read the brief', 'sortOrder' => 1, 'done' => true],
+                        ['id' => 2, 'title' => 'Draft an outline', 'sortOrder' => 2, 'done' => false],
                     ],
                     'hasitems' => true,
                     'countlabel' => '1 of 2',

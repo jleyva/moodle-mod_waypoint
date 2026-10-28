@@ -29,7 +29,7 @@ plugin uses all three:
 
 | Group | URL prefix | Namespace | Used here for |
 |---|---|---|---|
-| `ROUTE_GROUP_API` | `/api/rest/v2` | `route\api` | the five REST endpoints |
+| `ROUTE_GROUP_API` | `/api/rest/v2` | `route\api` | the seven REST endpoints |
 | `ROUTE_GROUP_PAGE` | `/` | `route\controller` | the teacher report page |
 | `ROUTE_GROUP_SHIM` | *(none)* | `route\shim` | keeping `/mod/waypoint/report.php` alive |
 
@@ -37,23 +37,37 @@ The other two (`/oauth2` and `/s/` shortlinks) are core-internal.
 
 ### 2. The endpoints
 
-| Verb | URL | Scopes required |
-|---|---|---|
-| `GET` | `/api/rest/v2/mod_waypoint/{cm}/items` | `read` |
-| `POST` | `/api/rest/v2/mod_waypoint/{cm}/items` | `read` + `manage` |
-| `PATCH` | `/api/rest/v2/mod_waypoint/{cm}/items/{itemid}` | `read` + `manage` |
-| `DELETE` | `/api/rest/v2/mod_waypoint/{cm}/items/{itemid}` | `read` + `manage` |
-| `PUT` | `/api/rest/v2/mod_waypoint/{cm}/progress/{itemid}` | `read` + `write` |
+| Verb | URL | Answers with | Scopes |
+|---|---|---|---|
+| `GET` | `/api/rest/v2/mod_waypoint/activities/{activityId}` | `200` — the activity | `read` |
+| `GET` | `…/activities/{activityId}/items` | `200` — `{items, pagination}` | `read` |
+| `POST` | `…/activities/{activityId}/items` | `201` + `Location` — the new waypoint | `read` + `manage` |
+| `GET` | `…/activities/{activityId}/items/{itemId}` | `200` — the waypoint | `read` |
+| `PATCH` | `…/activities/{activityId}/items/{itemId}` | `200` — the waypoint | `read` + `manage` |
+| `DELETE` | `…/activities/{activityId}/items/{itemId}` | `204` — nothing | `read` + `manage` |
+| `PUT` | `…/activities/{activityId}/items/{itemId}/progress` | `200` — the progress | `read` + `write` |
 
-`{cm}` is resolved by `\core\router\parameters\path_coursemodule`, so it accepts
+The collection takes `?page=`, `?pagesize=` (25 by default, 100 at most),
+`?sort=` (`sortorder`, `title` or `id`, each with an optional leading `-` for
+descending) and `?done=true|false`.
+
+`{activityId}` is resolved by `classes/route/parameters/path_activity.php`, a
+four-line subclass of `\core\router\parameters\path_coursemodule`. It accepts
 either a course module id or `idnumber:some-idnumber`, attaches the course module
 record and its context to the request, and returns a 404 on its own if it cannot
 resolve it. You never write that lookup yourself.
 
-**Every endpoint returns the same payload** — the full activity state
-(`items`, `progress`, `canmanage`, `cantick`). That means the React client never
-merges a partial update; it just replaces its state with the response. It also
-means there is exactly one response component in the OpenAPI document.
+This surface follows the [REST API style guide](https://moodledev.io/docs/5.3/guides/rest/style)
+published on 1 October 2026. That is also why it does **not** look like
+`core_user`'s `/user/{user}/preferences` — see
+[Where the guide and core disagree](#where-the-guide-and-core-disagree).
+
+**No endpoint returns the whole activity state.** Section 10.1 of the guide lets
+a collection response carry `items` and `pagination` and nothing else, so the
+progress summary and the capability flags belong to the activity instead. The
+React client pays for that: after any change it refetches the activity and the
+current page of waypoints together, in parallel, because the response to a
+change says nothing about the totals.
 
 The generated spec is at `/api/rest/v2/openapi.json` with no extra work.
 
@@ -93,23 +107,27 @@ call the repository and never the network directly.
 ### 5. Design System components
 
 Using `@moodlehq/design-system` 5.3.0: `Checkbox`, `ProgressBar`, `Button`,
-`Badge`, `Switch`.
+`Badge`, `Switch`, `Pagination`.
 
 Text fields are plain Bootstrap `form-control` — the design system had no `Input`
 component at 5.3.0 (it arrives in 6.x, along with `Alert`, `Tag` and `Textarea`).
 
 `ProgressBar` deliberately will not derive its count text from `value`/`max`:
-word order and plural rules belong to the language pack. So `countlabel` is built
+word order and plural rules belong to the language pack. So `countLabel` is built
 server-side with `get_string()` and sent down in the payload. Worth copying.
+
+`Pagination` takes `totalPages` / `currentPage` / `onPageChange` and renders
+`<button>` elements — not links — so a Behat step has to say `"button"`, not
+`"link"`.
 
 `js/esm/src/swizzle.json` declares which components a theme may override or wrap.
 
 ---
 
-## Five things that will bite you
+## Six things that will bite you
 
 None of these is in the documentation; all of them cost real time while building
-this. [WALKTHROUGH.md](WALKTHROUGH.md#6-five-traps) explains each one in full,
+this. [WALKTHROUGH.md](WALKTHROUGH.md#6-six-traps) explains each one in full,
 with the evidence.
 
 1. **Class-level `requirelogin` is silently ignored** — and this one is a security
@@ -129,15 +147,27 @@ with the evidence.
    is visually hidden and `.mds-switch` is not positioned, so the input lands
    outside the control. Both `I click on ... "checkbox"` and `I set the field ...
    to` throw `ElementClickInterceptedException`. Click the label text instead.
+6. **A `param::BOOL` query parameter answers 500, not 400, when it cannot be
+   read.** `query_parameter::validate()` throws a bare `\ValueError` for anything
+   that is not the literal `true` or `false`, and nothing maps that to a status.
+   This plugin declares `?done=` as `param::RAW` and parses it in
+   `item_query::read_done()` so a bad value is the 400 it should be. The cost is
+   that `openapi.json` now types `done` as a string rather than a boolean.
 
 
 ## Decisions taken without documentation
 
 A lot of this plugin could not be written from the docs. The pages on
 moodledev.io cover the `api` route group, parameters, responses and scopes; they
-say nothing about URL naming, the other route groups, how React is mounted, or
-which design system components exist. The rest came from reading core's source,
-from core's own plugins, or from things failing.
+say nothing about the other route groups, how React is mounted, or which design
+system components exist. The rest came from reading core's source, from core's
+own plugins, or from things failing.
+
+URL naming used to be on that list. It is not any more: the
+[REST API style guide](https://moodledev.io/docs/5.3/guides/rest/style) was
+published on 1 October 2026 and settles it, so this plugin now follows the guide
+rather than core's example. That turns out to be a real choice, not a free one —
+see below.
 
 This section exists so you can tell which parts of this plugin are *Moodle
 convention* and which are *one developer's reading of core in October 2026*. If
@@ -148,7 +178,6 @@ wins.
 
 | Decision | Based on | If it changes |
 |---|---|---|
-| **REST URL shape**: `/mod_waypoint/{cm}/items` | `core_user`'s `/{user}/preferences` — the only nested example in core — plus the fact that `path_coursemodule` exists as a **path** parameter class alongside `path_course`, `path_user`, `path_section`. That is core shipping infrastructure for cmids in the path, not the query. | Rename paths; nothing structural. |
 | **Plugins may use three route groups** (`api`, `controller`, `shim`) | The constants in `route_loader_interface` and the body of `route_loader::configure_routes()`. The docs only describe `api`, and warn that "any unknown Route Group will be ignored". | A group could be made core-only. |
 | **Shim paths are relative to the plugin directory** — `/report.php`, not `/mod/waypoint/report.php` | The `componentpathcallback` in `get_all_shimmed_routes()`, which prefixes the component directory for everything except `core`. | The shim 404s. |
 | **`swizzle.json` values** `safe` / `risky` / `prohibited` | `block_timeline`'s own `swizzle.json`. I found no documentation of the file or its vocabulary. | Themes may not override as intended. |
@@ -165,16 +194,63 @@ wins.
 | **A Mustache comment ends at the first `}}`** | The docblock in `view.mustache` described the fallback and mentioned the `{{#react}}` tag by name. Its closing braces terminated the comment, and the rest of the docblock — prose and example JSON — rendered onto the page for every student. Never write a tag inside a template docblock. |
 | **`install.xml`'s `PATH` is relative to `dirroot`** | `mod/waypoint/db`, not `public/mod/waypoint/db`. The installer rejects it otherwise. |
 | **The design system `Switch` cannot be clicked by Behat** | Its real `<input>` is visually hidden (1x1px, clipped) with the visible control in a sibling `<label for=...>`, and `.mds-switch` sets no `position: relative` — so the absolutely positioned input lands outside the control. Both `I click on ... "checkbox"` and `I set the field ... to` call `click()` on that input and get `ElementClickInterceptedException`. Click the label text instead. |
+| **A `param::BOOL` query parameter answers 500 on a bad value** | `?done=maybe` returned a 500 HTML page. `query_parameter::validate()` matches the literal strings `true` and `false` and throws a bare `\ValueError` otherwise, which no handler maps to a status. Declaring the parameter `param::RAW` and parsing it yourself is the only way to get the 400 the caller deserves. |
+| **`path_coursemodule` names its request attributes after the parameter** | A parameter called `cm` attaches `cmdata` and `cmcontext`. Name it `activityId` as the style guide requires and the handler has to ask for `$activityIddata` — a camelCase variable, which Moodle's own coding style forbids. Overriding the trait's `get_value_name()` in a four-line subclass is what reconciles the two. |
 | **`tsc --noEmit -p tsconfig.json` is not a usable typecheck** | 40 x `TS6305` from the `composite` project reference, for core's files as much as this plugin's. See the build notes in [WALKTHROUGH.md](WALKTHROUGH.md#2-react). |
+
+### Where the guide and core disagree
+
+The style guide is normative and recent. Core's own REST endpoints predate it,
+and in places contradict it. Where the two differ this plugin follows the guide,
+because the guide is the published convention and core's endpoints are not
+documented as examples to copy.
+
+| Rule | The guide | Core | Here |
+|---|---|---|---|
+| §4.3 URI shape | `<component>/<resource>/{identifier}`, e.g. `/user/users/42` | `core_user` serves `/user/{user}/preferences` — an identifier with no resource noun before it | `/mod_waypoint/activities/{activityId}/items` |
+| §6.1 path parameters | camelCase, ending in `Id` | `{user}`, `{cm}` | `{activityId}`, `{itemId}` |
+| §9.1 JSON fields | camelCase (a SHOULD) | concatenated lowercase | `canManage`, `sortOrder`, `countLabel` |
+| §12.1 error bodies | RFC-9457: `type`, `title`, `detail`, `instance` | `exception_response` emits `message`, `errorcode`, `stacktrace` | core's shape — a plugin cannot change it |
+| §3.2, §17 statelessness | no server-side session state | the router authenticates by cookie as well as by token | core's behaviour |
+
+The last two are not ours to fix: both are decided by the framework, and a
+plugin route gets whatever `exception_response` and the authentication
+middleware produce.
+
+Two consequences are worth knowing before you copy this:
+
+- **Following §4.3 costs you the resemblance to core.** If you grep core for a
+  precedent you will find `core_user` and conclude the opposite of what the
+  guide says. The guide is newer.
+- **The guide is not yet self-consistent.** §12.1 and §12.2 specify two
+  different error shapes and both are marked required; the page size is
+  `pageSize` in the body but `pagesize` in the query string; §9.3 forbids Unix
+  timestamps while §11.5's own example uses one; §7.1 suggests a maximum nesting
+  depth of two and then gives a REQUIRED example three deep; and §16 carries a
+  "this section is under revision" note from its authors. Where it contradicts
+  itself this plugin picks one side and says so in a comment at the point of
+  use.
+
+Only ALL-CAPS keywords are normative (the guide says so in §2), so "maximum
+recommended depth: 2" in §7.1 is advice, not a rule — which is why
+`/items/{itemId}/progress` sits three deep without apology.
 
 ### My own choices, with no precedent in core
 
 These are design decisions, not conventions. Disagree freely.
 
-- **Every endpoint returns the complete activity state**, including the mutating
-  ones. Core does not do this — `core_user`'s preferences API returns only the
-  preferences you touched. The argument for it is in
-  [WALKTHROUGH.md](WALKTHROUGH.md#every-endpoint-returns-the-whole-state).
+- **The activity is a resource in its own right.** The guide says where the
+  progress summary and the capability flags may *not* go — a collection carries
+  items and pagination only — but not where they should go instead. Hanging them
+  off `GET /activities/{activityId}` is my reading; a separate
+  `/activities/{activityId}/progress` would be just as defensible.
+- **`?done=` is a filter rather than two endpoints.** §10.4 asks for filtering
+  through query parameters and leaves the vocabulary open.
+- **Which fields are sortable** (`sortorder`, `title`, `id`). The guide fixes the
+  `sort` syntax and says nothing about which keys an endpoint should accept, or
+  whether they are spelt as the JSON field (`sortOrder`) or lowercased
+  (`sortorder`). Its own example lowercases them, so this plugin does too, and
+  rejects anything else with a 400.
 - **Three scopes (`read` / `write` / `manage`) that are deliberately not 1:1 with
   the capabilities.** The docs explain how to define a scope, not how to choose
   the granularity.
@@ -199,7 +275,7 @@ currently share the version number `2026100500` — it is 5.3's branch point, no
 The `supported` range is not a guess: the full suite has been run on both ends.
 On `MOODLE_503_STABLE` (build 20261021) and on 6.0dev, the plugin installs, the
 seven routes register, the scope identifiers resolve, `openapi.json` validates
-with no dangling references, and the same 26 PHPUnit and 21 Jest tests pass.
+with no dangling references, and the same 37 PHPUnit and 27 Jest tests pass.
 
 ```bash
 # From your Moodle root (this plugin lives at public/mod/waypoint in the new layout,
@@ -232,8 +308,15 @@ way to tell this apart from a bug in your plugin — if core's endpoint is also
 
 ```bash
 php public/admin/tool/phpunit/cli/util.php --buildconfig
-vendor/bin/phpunit --testsuite mod_waypoint_testsuite    # 17 tests
-npx jest public/mod/waypoint                             # 21 tests
+vendor/bin/phpunit --testsuite mod_waypoint_testsuite    # 37 tests
+npx jest public/mod/waypoint                             # 27 tests
+```
+
+TypeScript is checked separately, because the root `tsconfig.json` cannot be
+used directly (see the traps below):
+
+```bash
+npx grunt esm --root=public/mod/waypoint
 ```
 
 The PHP tests extend `\core\tests\router\route_testcase`, which gives you
@@ -243,7 +326,7 @@ The PHP tests extend `\core\tests\router\route_testcase`, which gives you
 Behat, once the site is configured for it:
 
 ```bash
-php public/admin/tool/behat/cli/run.php --tags=@mod_waypoint   # 16 scenarios
+php public/admin/tool/behat/cli/run.php --tags=@mod_waypoint   # 15 scenarios
 ```
 
 Every interactive scenario is `@javascript`, because the UI is React. One feature,
@@ -260,7 +343,7 @@ There is deliberately no `I change window size to "large"` step. Core already
 resizes every scenario to medium (1024x768) in `behat_hooks.php`, explicitly "to
 avoid responsive problems", so adding a resize overrides the size core
 standardises on rather than helping. `block_timeline` needs one because its
-layout genuinely reflows; a list of checkboxes does not. All 16 scenarios pass at
+layout genuinely reflows; a list of checkboxes does not. All 15 scenarios pass at
 the default.
 
 `tests/behat/behat_mod_waypoint.php` resolves the routed report page through

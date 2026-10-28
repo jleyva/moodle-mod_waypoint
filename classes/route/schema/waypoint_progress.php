@@ -24,7 +24,7 @@ use core\router\schema\referenced_object;
 /**
  * A user's progress through a waypoint list, as returned by the REST API.
  *
- * countlabel is built server-side on purpose: plural rules and word order
+ * countLabel is built server-side on purpose: plural rules and word order
  * belong to the site language, not to the JavaScript that renders the bar.
  *
  * @package    mod_waypoint
@@ -41,7 +41,7 @@ class waypoint_progress extends schema_object implements referenced_object {
                 'completed' => new scalar_type(param::INT, required: true),
                 'total' => new scalar_type(param::INT, required: true),
                 'percentage' => new scalar_type(param::INT, required: true),
-                'countlabel' => new scalar_type(param::TEXT, required: true),
+                'countLabel' => new scalar_type(param::TEXT, required: true),
             ],
         );
     }

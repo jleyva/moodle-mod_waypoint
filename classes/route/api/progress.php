@@ -17,7 +17,6 @@
 namespace mod_waypoint\route\api;
 
 use core\param;
-use core\router\parameters\path_coursemodule;
 use core\router\require_login;
 use core\router\route;
 use core\router\schema\objects\scalar_type;
@@ -28,7 +27,8 @@ use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use core\router\scope\scopeset;
 use mod_waypoint\local\item_manager;
-use mod_waypoint\route\responses\state_response;
+use mod_waypoint\route\parameters\path_activity;
+use mod_waypoint\route\responses\item_progress_response;
 use mod_waypoint\route\scope\waypoint\read;
 use mod_waypoint\route\scope\waypoint\write;
 use Psr\Http\Message\ResponseInterface;
@@ -36,14 +36,20 @@ use Psr\Http\Message\ServerRequestInterface;
 use stdClass;
 
 /**
- * REST API for the calling user's own progress.
+ * REST API for the calling user's own progress against one waypoint.
  *
  * Split from the items API on purpose: ticking a waypoint and editing the
  * waypoint list are different privileges, so they get different capabilities
  * and different OAuth2 scopes. A token granted mod_waypoint:waypoint:write can
  * tick boxes but cannot touch the list.
  *
- * Resolves to /api/rest/v2/mod_waypoint/{cm}/progress/{itemid}
+ * Progress hangs off the waypoint that owns it, which puts it three levels
+ * deep. The style guide calls for nesting to express exactly this kind of
+ * containment, while also suggesting a maximum depth of two — unlike the
+ * rules around it, that suggestion is not written as a MUST, and its own
+ * worked example is deeper still.
+ *
+ * Resolves to /api/rest/v2/mod_waypoint/activities/{activityId}/items/{itemId}/progress
  *
  * @package    mod_waypoint
  * @copyright  2026 Moodle Pty Ltd
@@ -54,9 +60,9 @@ use stdClass;
     // never consults the class-level route, so a class-level requirelogin is
     // silently ignored — and the route ends up with no login check at all.
 #[route(
-    path: '/{cm}',
+    path: '/activities/{activityId}',
     pathtypes: [
-        new path_coursemodule(name: 'cm'),
+        new path_activity(name: 'activityId'),
     ],
 )]
 class progress {
@@ -69,18 +75,18 @@ class progress {
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
-     * @param stdClass $cmdata The course module record, attached by path_coursemodule.
-     * @param int $itemid The waypoint to tick or untick.
+     * @param stdClass $activitydata The course module record, attached by path_activity.
+     * @param int $itemId The waypoint to tick or untick.
      * @return payload_response
      */
     #[route(
-        path: '/progress/{itemid}',
+        path: '/items/{itemId}/progress',
         method: ['PUT'],
         title: 'Tick or untick a waypoint',
         description: 'Record, or withdraw, the calling user\'s completion of a single waypoint.',
         pathtypes: [
             new path_parameter(
-                name: 'itemid',
+                name: 'itemId',
                 type: param::INT,
             ),
         ],
@@ -94,7 +100,7 @@ class progress {
             ),
         ),
         responses: [
-            new state_response(),
+            new item_progress_response(),
         ],
         requirelogin: new require_login(
             requirelogin: false,
@@ -109,21 +115,20 @@ class progress {
     public function set_progress(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        stdClass $cmdata,
-        int $itemid,
+        stdClass $activitydata,
+        // phpcs:ignore moodle.NamingConventions.ValidVariableName.VariableNameLowerCase
+        int $itemId,
     ): payload_response {
         global $USER;
 
-        $manager = item_manager::instance_from_cmid((int) $cmdata->id);
+        $manager = item_manager::instance_from_cmid((int) $activitydata->id);
         $manager->require_can_tick();
 
         $body = $request->getParsedBody();
         $done = (bool) clean_param($body['done'] ?? false, PARAM_BOOL);
 
-        $manager->set_item_state($itemid, $done, $USER->id);
-
         return new payload_response(
-            payload: $manager->get_state_payload($USER->id),
+            payload: $manager->set_item_state($itemId, $done, $USER->id),
             request: $request,
             response: $response,
         );

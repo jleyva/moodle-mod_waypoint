@@ -10,7 +10,7 @@ import { jsxDEV } from "react/jsx-dev-runtime";
 import { use } from "react";
 import { Badge, Button, Checkbox } from "@moodlehq/design-system";
 import { getString } from "@moodle/lms/core/stringUtils";
-function ItemRow({ item, cantick, canmanage, busy, onToggle, onDelete }) {
+function ItemRow({ item, canTick, canManage, busy, onToggle, onDelete }) {
   const doneLabel = use(getString("done", "mod_waypoint"));
   const deleteLabel = use(getString("deletewaypoint", "mod_waypoint"));
   return /* @__PURE__ */ jsxDEV("li", { className: "d-flex align-items-center gap-2 py-2 border-bottom", "data-itemid": item.id, children: [
@@ -19,7 +19,7 @@ function ItemRow({ item, cantick, canmanage, busy, onToggle, onDelete }) {
       {
         label: item.title,
         checked: item.done,
-        disabled: !cantick || busy,
+        disabled: !canTick || busy,
         onChange: (event) => onToggle(item, event.target.checked)
       },
       void 0,
@@ -40,7 +40,7 @@ function ItemRow({ item, cantick, canmanage, busy, onToggle, onDelete }) {
       lineNumber: 60,
       columnNumber: 27
     }, this),
-    canmanage && /* @__PURE__ */ jsxDEV(
+    canManage && /* @__PURE__ */ jsxDEV(
       Button,
       {
         label: deleteLabel,

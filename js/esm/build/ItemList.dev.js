@@ -9,12 +9,12 @@ import { jsxDEV } from "react/jsx-dev-runtime";
  */
 import String from "@moodle/lms/core/String";
 import ItemRow from "@moodle/lms/mod_waypoint/ItemRow";
-function ItemList({ items, canmanage, cantick, busy, onToggle, onDelete }) {
+function ItemList({ items, canManage, canTick, busy, onToggle, onDelete }) {
   if (items.length === 0) {
     return /* @__PURE__ */ jsxDEV("p", { className: "text-muted mb-0", "data-region": "waypoint-empty", children: /* @__PURE__ */ jsxDEV(
       String,
       {
-        identifier: canmanage ? "nowaypointsteacher" : "nowaypoints",
+        identifier: canManage ? "nowaypointsteacher" : "nowaypoints",
         component: "mod_waypoint"
       },
       void 0,
@@ -35,8 +35,8 @@ function ItemList({ items, canmanage, cantick, busy, onToggle, onDelete }) {
     ItemRow,
     {
       item,
-      cantick,
-      canmanage,
+      canTick,
+      canManage,
       busy,
       onToggle,
       onDelete

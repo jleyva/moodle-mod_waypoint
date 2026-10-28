@@ -29,9 +29,9 @@ interface ItemRowProps {
     /** The waypoint to render. */
     item: WaypointItem;
     /** Whether the user may tick it. */
-    cantick: boolean;
+    canTick: boolean;
     /** Whether the user may delete it. */
-    canmanage: boolean;
+    canManage: boolean;
     /** Whether a request is in flight, so controls should be inert. */
     busy: boolean;
     /** Called when the checkbox is toggled. */
@@ -43,7 +43,7 @@ interface ItemRowProps {
 /**
  * Render a single waypoint with its tick box and, for teachers, a delete button.
  */
-export default function ItemRow({item, cantick, canmanage, busy, onToggle, onDelete}: ItemRowProps) {
+export default function ItemRow({item, canTick, canManage, busy, onToggle, onDelete}: ItemRowProps) {
     const doneLabel = use(getString('done', 'mod_waypoint'));
     const deleteLabel = use(getString('deletewaypoint', 'mod_waypoint'));
 
@@ -53,12 +53,12 @@ export default function ItemRow({item, cantick, canmanage, busy, onToggle, onDel
                 <Checkbox
                     label={item.title}
                     checked={item.done}
-                    disabled={!cantick || busy}
+                    disabled={!canTick || busy}
                     onChange={(event) => onToggle(item, event.target.checked)}
                 />
             </div>
             {item.done && <Badge label={doneLabel} variant="success" subtle pill />}
-            {canmanage && (
+            {canManage && (
                 <Button
                     label={deleteLabel}
                     variant="ghost"

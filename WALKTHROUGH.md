@@ -83,7 +83,7 @@ public function get_count_label(): string {
 }
 ```
 
-…and ships it in the payload as `countlabel`, already translated. React just
+…and ships it in the payload as `countLabel`, already translated. React just
 displays it. If you take one habit from this document, take that one.
 
 ### Swizzling
@@ -299,15 +299,15 @@ class-level attribute supplies a shared prefix and shared parameters:
 
 ```php
 #[route(
-    path: '/{cm}',
-    pathtypes: [new path_coursemodule(name: 'cm')],
+    path: '/activities/{activityId}',
+    pathtypes: [new path_activity(name: 'activityId')],
 )]
 class items {
 
     #[route(
         path: '/items',
         method: ['GET'],
-        responses: [new state_response()],
+        responses: [new item_collection_response()],
         requirelogin: new require_login(
             requirelogin: false,
             requirecourselogin: true,
@@ -321,11 +321,14 @@ class items {
 
 Two things are prefixed for you and you must not write them: the group prefix, and
 your component name. So the report controller declares `path: '/report/{cm}'` and
-the real URL is `/mod_waypoint/report/{cm}`.
+the real URL is `/mod_waypoint/report/{cm}`. That one keeps the short `{cm}`
+spelling on purpose: it is an HTML page in the `page` group, and the REST style
+guide's naming rules apply to the REST API, not to routed pages.
 
 ### path_coursemodule does four jobs for free
 
-Listing `new path_coursemodule(name: 'cm')` in `pathtypes` gets you:
+Listing a `path_coursemodule` — here through the `path_activity` subclass — in
+`pathtypes` gets you:
 
 1. acceptance of either a numeric cmid **or** `idnumber:some-idnumber`
 2. the lookup itself
@@ -335,16 +338,37 @@ Listing `new path_coursemodule(name: 'cm')` in `pathtypes` gets you:
 We wrote no lookup code and no 404 handler, and got idnumber support we did not
 ask for. Sibling classes exist for courses, users, sections, themes and components.
 
-Your method receives them by name — parameter `cm` produces attributes `cmdata`
-and `cmcontext`:
+Your method receives them by name, and the name comes from the parameter: a
+parameter called `cm` produces attributes `cmdata` and `cmcontext`.
+
+That is a problem once the style guide gets involved, because §6.1 wants the
+parameter called `activityId` — which would make the attribute `activityIddata`,
+and Moodle's own coding style forbids a camelCase variable. The two rules are
+reconciled by a four-line subclass that renames the attributes without renaming
+the parameter:
+
+```php
+class path_activity extends path_coursemodule {
+    #[\Override]
+    protected function get_value_name(string $suffix): string {
+        return 'activity' . $suffix;
+    }
+}
+```
+
+So the handler signature stays readable:
 
 ```php
 public function get_items(
     ServerRequestInterface $request,
     ResponseInterface $response,
-    stdClass $cmdata,
+    stdClass $activitydata,
 ): payload_response
 ```
+
+There is no such escape for `{itemId}`. A plain `path_parameter` is bound to the
+handler argument by name, so the method really does have to say `int $itemId`,
+with a `phpcs:ignore` above it.
 
 ### Linking to a routed page
 
@@ -414,22 +438,29 @@ routes anywhere in the tree. See trap 4 for when this actually works.
 
 ### The endpoints
 
-| Verb | Path | Scopes |
-|---|---|---|
-| `GET` | `/{cm}/items` | `read` |
-| `POST` | `/{cm}/items` | `read` + `manage` |
-| `PATCH` | `/{cm}/items/{itemid}` | `read` + `manage` |
-| `DELETE` | `/{cm}/items/{itemid}` | `read` + `manage` |
-| `PUT` | `/{cm}/progress/{itemid}` | `read` + `write` |
+| Verb | Path | Answers with | Scopes |
+|---|---|---|---|
+| `GET` | `/activities/{activityId}` | `200` — the activity | `read` |
+| `GET` | `/activities/{activityId}/items` | `200` — `{items, pagination}` | `read` |
+| `POST` | `/activities/{activityId}/items` | `201` + `Location` — the new waypoint | `read` + `manage` |
+| `GET` | `/activities/{activityId}/items/{itemId}` | `200` — the waypoint | `read` |
+| `PATCH` | `/activities/{activityId}/items/{itemId}` | `200` — the waypoint | `read` + `manage` |
+| `DELETE` | `/activities/{activityId}/items/{itemId}` | `204` — nothing | `read` + `manage` |
+| `PUT` | `/activities/{activityId}/items/{itemId}/progress` | `200` — the progress | `read` + `write` |
 
 `PUT` for the tick, not `POST`, because the operation is idempotent — sending
 `done: true` twice leaves the same state behind.
 
-### Every endpoint returns the whole state
+Every one of those shapes is the [REST API style
+guide](https://moodledev.io/docs/5.3/guides/rest/style) being obeyed rather than
+a preference: §4.3 fixes `<component>/<resource>/{identifier}`, §6.1 fixes
+camelCase path parameters ending in `Id`, §11.3 fixes the `201` and the
+`Location`, and §10.1 fixes the collection envelope.
 
-This is the central design decision and the thing most worth copying. All five
-endpoints — including the ones that change something — return the complete state
-of the activity:
+### The shape the guide would not let us keep
+
+The first version of this plugin had five endpoints and every one of them
+returned the same thing: the complete state of the activity.
 
 ```json
 {
@@ -440,14 +471,57 @@ of the activity:
 }
 ```
 
-Not the thing that changed. Everything, every time. Three consequences:
+It was a pleasant thing to write. The client never merged a partial update, it
+just replaced its state; the server stayed the single source of truth; and there
+was exactly one response class and one response component in the OpenAPI
+document.
 
-- the client never merges a partial update — it replaces its state and re-renders,
-  which removes an entire category of bug
-- the server stays the single source of truth for progress and permissions, so the
-  client cannot drift
-- there is exactly one response class, and therefore exactly one response
-  component in the OpenAPI document
+It is also not REST, and §10.1 says so plainly: a collection endpoint returns
+`items` and `pagination`, and nothing else. There is nowhere in that envelope to
+put a progress summary or a pair of capability flags.
+
+So the state was broken up along the lines of the resources that own it:
+
+| Was | Is now |
+|---|---|
+| `items` | the collection, `GET …/items` |
+| `progress` | part of the activity, `GET …/activities/{activityId}` |
+| `canmanage`, `cantick` | likewise, as `canManage` and `canTick` |
+| an item's `done` | its own sub-resource, `PUT …/items/{itemId}/progress` |
+
+**What that costs.** A tick used to be one request that came back with
+everything the screen needed. Now `PUT …/progress` answers with the progress
+against that one waypoint, which tells the UI nothing about the activity total —
+so `Waypoint.tsx` follows every change with a `Promise.all` of the activity and
+the current page. Two requests where there was one.
+
+**What it buys.** The payload no longer grows with the list, because the list is
+paginated. Each response says one true thing about one resource, which is what
+makes the endpoints composable for a client that is not this React app. And a
+cache can reason about them, which it could not when every verb returned
+everything.
+
+Worth knowing which trade you are making. The old shape is more comfortable to
+build against; the new one is the one the guide asks for.
+
+### Paging, sorting and filtering
+
+§10.2 to §10.4 make all three mandatory on a collection. `classes/local/item_query.php`
+holds them:
+
+```
+?page=2&pagesize=50&sort=-title&done=false
+```
+
+Defaults are 1 and 25, the maximum page size is 100, and the sort keys are
+`sortorder`, `title` and `id` with an optional leading `-`. An unknown sort key
+is a 400 rather than a database error, because `item_query` parses the
+expression on the way in rather than at the point of use.
+
+The filter has a visible consequence in the UI. "Hide completed" used to filter
+the array React was already holding; with the list paginated that would silently
+drop waypoints living on another page, so the switch now re-requests the
+collection with `done=false`.
 
 ### Describing requests and responses
 
@@ -461,18 +535,44 @@ requestbody: new request_body(
 ),
 ```
 
-Responses are a reusable class, `classes/route/responses/state_response.php`, so
-every route just writes `new state_response()`.
+Responses are reusable classes in `classes/route/responses/`, so a route just
+writes `new item_collection_response()` or `new created_item_response()`.
+
+`created_item_response` is the interesting one. Core's `response` class accepts a
+`headers` array but nothing in core uses it, so the `Location` header on the 201
+is declared there and set on the response in the route:
+
+```php
+$location = util::get_path_for_callable(
+    [self::class, 'get_item'],
+    ['activityId' => (int) $activitydata->id, 'itemId' => $item['id']],
+);
+
+return new payload_response(
+    payload: $item,
+    request: $request,
+    response: $response->withStatus(201)->withHeader('Location', $location->out(false)),
+);
+```
+
+Asking the router for the address rather than building the string is what keeps
+the header and the route from drifting apart — and it is the reason
+`GET …/items/{itemId}` exists at all, since a `Location` pointing at a 404 would
+be worse than no header.
+
+`DELETE` goes further and returns the PSR response directly instead of a
+`payload_response`, because a 204 must not carry a body and `payload_response`
+always writes one.
 
 `referenced_object` is an empty marker interface. A schema class implementing it
 is emitted **once** into `#/components/schemas/` and referenced from everywhere it
-is used, instead of being inlined repeatedly. Both `waypoint_item` and
-`waypoint_progress` implement it.
+is used, instead of being inlined repeatedly. `waypoint_item`, `waypoint_progress`,
+`waypoint_activity`, `item_progress` and `pagination` all implement it.
 
 ### OpenAPI generates itself
 
 Core registers `/api/rest/v2/openapi.json` automatically. Your endpoints appear
-with no extra work: three paths, two schema components, zero dangling references.
+with no extra work: four paths, five schema components, zero dangling references.
 
 ### Scopes
 
@@ -532,9 +632,10 @@ A student ticks a box. Here is every piece doing its part.
 **Getting there.** The course page links to `view.php?id=N`. That stays a real file
 on disk — core links to it and a plugin cannot route that away. It calls
 `require_login`, builds the `item_manager`, checks the view capability, and asks
-for the full state payload: the same structure the REST API returns.
+for two payloads: the activity and the first page of waypoints — the same two
+structures the REST API returns.
 
-**First paint.** It passes that state into `mod_waypoint/view` as props. The
+**First paint.** It passes both into `mod_waypoint/view` as props. The
 browser receives the mount div with the state inlined in `data-react-props`, and
 the server-rendered fallback inside it. `react_autoinit` finds the div, imports the
 module and mounts the root, replacing the fallback. Because the state arrived in
@@ -546,7 +647,7 @@ the props, **there is no request on load.**
 **The request.** The repository calls core's `Fetch`:
 
 ```ts
-Fetch.performPut('mod_waypoint', `${cmid}/progress/${itemid}`, {body: {done}});
+Fetch.performPut('mod_waypoint', `activities/${activityId}/items/${itemId}/progress`, {body: {done}});
 ```
 
 `Fetch` prepends the API base and `rest/v2`. The API base is computed server-side
@@ -554,7 +655,7 @@ and handles both cases — `/api` where the rewrite is configured, `/r.php/api` 
 it is not. Your code never knows the difference, so the plugin is portable across
 both.
 
-**Middleware, in order.** Routing matches the pattern → `path_coursemodule`
+**Middleware, in order.** Routing matches the pattern → `path_activity`
 resolves the course module and attaches the record and context → the authentication
 middleware reads `requirelogin` off the matched route and runs the course login
 check → if a token was used, the scope middleware checks the scopeset.
@@ -580,20 +681,28 @@ It writes or deletes the progress row, then asks the Completion API to re-evalua
 completion rule and the API can never disagree about what "complete" means — one
 code path, not two.
 
-**The response.** The full state again. Not the item. Everything.
+**The response.** The progress against that one waypoint, and nothing more:
+`{"itemId": 1, "done": true, "completedAt": "2026-10-28T10:15:00+01:00"}`. An
+ISO-8601 string with an offset, in the user's own timezone, because §9.3 of the
+style guide forbids Unix timestamps in a response outright.
 
-**Back in the browser.** The repository decodes, the root drops it into state, React
-re-renders. The bar moves because its `countlabel` and `percentage` came down in
-that payload. The badge appears. If that was the last box, the activity is already
-complete — that happened server-side during the same request.
+**Back in the browser.** And here is the bill for conformance. That response
+says nothing about how many waypoints are now ticked, so the root component
+cannot move the progress bar from it. It fires a `Promise.all` of
+`getActivity()` and `getItems()` for the page it is showing, and re-renders from
+the pair. The bar moves because the *activity's* `countLabel` and `percentage`
+came down in the first of those. The badge appears because the item's `done` came
+down in the second. If that was the last box, the activity is already complete —
+that happened server-side during the original `PUT`.
 
-**On failure**, the catch block sets a flag, a warning with a retry button appears,
-and the old state is left untouched. Retry re-fetches the whole state. That is clean
-precisely because the payload is always complete.
+**On failure**, the catch block sets a flag, a warning with a retry button
+appears, and the old state is left untouched. Retry runs the same pair of
+requests. Nothing is merged at any point: the two responses replace what was
+there, so a failed request leaves a stale screen rather than a wrong one.
 
 ---
 
-## 6. Five traps
+## 6. Six traps
 
 None of these is in the documentation. All of them cost real time.
 
@@ -688,6 +797,33 @@ And I click on "Hide completed" "text"
 Core's Edit mode switch is the same component and does work with
 `I set the field`, which is why this is easy to get wrong — but that works
 because of the layout around it, not by design.
+
+### 6. A `param::BOOL` query parameter answers 500, not 400
+
+`?done=maybe` returned a 500 HTML page from an endpoint that should have said
+400 and moved on.
+
+`query_parameter::validate()` matches the literal strings `true` and `false` and
+throws a bare `\ValueError` for anything else:
+
+```php
+match ($params[$this->name]) {
+    'true' => $params[$this->name] = 1,
+    'false' => $params[$this->name] = 0,
+    default => throw new \ValueError('Invalid boolean value.'),
+};
+```
+
+`\ValueError` is not a Moodle exception, does not implement
+`response_aware_exception`, and is not in `response_handler`'s match — so it
+falls through to the generic 500. Compare `param::INT`, which raises
+`invalid_parameter_exception` and produces the 400 you would expect:
+`?page=notanumber` behaves correctly, `?done=maybe` does not.
+
+The way out is to not declare the parameter as a boolean. `?done=` is
+`param::RAW` on the route, and `item_query::read_done()` does the matching, so a
+bad value raises `invalid_parameter_exception` like every other bad value. There
+is a test for it.
 
 ### Bonus: the `getString` mock in Jest
 

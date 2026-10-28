@@ -16,63 +16,56 @@
 
 namespace mod_waypoint\route\responses;
 
-use core\param;
 use core\router\schema\example;
-use mod_waypoint\route\schema\array_of;
-use core\router\schema\objects\scalar_type;
 use core\router\schema\objects\schema_object;
 use core\router\schema\response\content\json_media_type;
 use core\router\schema\response\response;
+use mod_waypoint\route\schema\array_of;
+use mod_waypoint\route\schema\pagination;
 use mod_waypoint\route\schema\waypoint_item;
-use mod_waypoint\route\schema\waypoint_progress;
 
 /**
- * The whole state of one waypoint activity for the calling user.
+ * A page of waypoints.
  *
- * Every route in this plugin returns this same shape, including the ones that
- * change something. That keeps the React client trivial — it replaces its
- * state with the response and never has to merge a partial update — and it
- * means there is exactly one response component in the OpenAPI document.
+ * Section 10.1 of the style guide fixes this envelope: a collection endpoint
+ * returns items and pagination, and nothing else. That is why the progress
+ * summary and the capability flags are not here — they belong to the
+ * activity, and activity_response is where they live.
  *
  * @package    mod_waypoint
  * @copyright  2026 Moodle Pty Ltd
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class state_response extends response {
+class item_collection_response extends response {
     /**
-     * Describe a waypoint state response.
+     * Describe a page of waypoints.
      */
     public function __construct() {
         parent::__construct(
             statuscode: 200,
-            description: 'The waypoint list and the calling user\'s progress through it',
+            description: 'A page of waypoints, with the calling user\'s ticks folded in',
             content: [
                 new json_media_type(
                     schema: new schema_object(
                         content: [
                             'items' => new array_of(itemtype: new waypoint_item()),
-                            'progress' => new waypoint_progress(),
-                            'canmanage' => new scalar_type(param::BOOL, required: true),
-                            'cantick' => new scalar_type(param::BOOL, required: true),
+                            'pagination' => new pagination(),
                         ],
                     ),
                     example: new example(
-                        name: 'A part-finished waypoint list',
-                        summary: 'Two of three waypoints ticked, viewed by a student',
+                        name: 'The first page of a short list',
+                        summary: 'Three waypoints, two of them ticked',
                         value: [
                             'items' => [
-                                ['id' => 1, 'title' => 'Read the brief', 'sortorder' => 1, 'done' => true],
-                                ['id' => 2, 'title' => 'Draft an outline', 'sortorder' => 2, 'done' => true],
-                                ['id' => 3, 'title' => 'Submit for review', 'sortorder' => 3, 'done' => false],
+                                ['id' => 1, 'title' => 'Read the brief', 'sortOrder' => 1, 'done' => true],
+                                ['id' => 2, 'title' => 'Draft an outline', 'sortOrder' => 2, 'done' => true],
+                                ['id' => 3, 'title' => 'Submit for review', 'sortOrder' => 3, 'done' => false],
                             ],
-                            'progress' => [
-                                'completed' => 2,
-                                'total' => 3,
-                                'percentage' => 67,
-                                'countlabel' => '2 of 3',
+                            'pagination' => [
+                                'page' => 1,
+                                'pageSize' => 25,
+                                'totalItems' => 3,
                             ],
-                            'canmanage' => false,
-                            'cantick' => true,
                         ],
                     ),
                 ),

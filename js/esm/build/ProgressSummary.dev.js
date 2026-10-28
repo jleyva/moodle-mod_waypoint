@@ -18,7 +18,7 @@ function ProgressSummary({ progress }) {
     {
       value: progress.percentage,
       title,
-      count: progress.countlabel,
+      count: progress.countLabel,
       labelVariant: "title-and-count",
       ...finished ? {} : { status: "in-progress" }
     },

@@ -5,9 +5,10 @@ Feature: Teachers manage the waypoint list through the REST API
   I need to add and remove waypoints
 
   Each of these scenarios drives a REST call from the React UI: adding sends a
-  POST, deleting sends a DELETE, and both come back with the whole activity
-  state. Reloading the page afterwards is what proves the change reached the
-  database rather than only the DOM.
+  POST and gets back 201 with just the new waypoint, deleting sends a DELETE
+  and gets back 204 with nothing at all. Neither says what the progress total
+  is now, so the UI refetches the activity and the page afterwards. Reloading
+  the page is what proves the change reached the database, not only the DOM.
 
   Background:
     Given the following "users" exist:

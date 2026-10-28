@@ -38,6 +38,28 @@ require_once(__DIR__ . '/../../../../lib/behat/behat_base.php');
 class behat_mod_waypoint extends behat_base {
 
     /**
+     * Fill an activity with enough waypoints to need more than one page.
+     *
+     * The collection endpoint pages at twenty-five, so a Gherkin table would
+     * need twenty-six rows to say one thing. This says it once.
+     *
+     * @Given :count waypoints exist in the :activityname waypoint activity
+     * @param int $count How many waypoints to create.
+     * @param string $activityname The activity to create them in.
+     */
+    public function waypoints_exist_in_the_waypoint_activity(int $count, string $activityname): void {
+        $cm = $this->get_cm_by_activity_name('waypoint', $activityname);
+        $generator = behat_util::get_data_generator()->get_plugin_generator('mod_waypoint');
+
+        for ($i = 1; $i <= $count; $i++) {
+            $generator->create_item([
+                'waypointid' => $cm->instance,
+                'title' => sprintf('Waypoint %02d', $i),
+            ]);
+        }
+    }
+
+    /**
      * Convert page names to URLs for steps like 'I am on the "X" "mod_waypoint > Y" page'.
      *
      * Recognised page names are:

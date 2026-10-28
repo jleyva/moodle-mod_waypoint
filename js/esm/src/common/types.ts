@@ -16,8 +16,8 @@
 /**
  * Shared types for the Waypoint React app.
  *
- * These mirror the REST API response described by
- * mod_waypoint\route\responses\state_response. If you change one, change both.
+ * These mirror the REST API responses described in
+ * mod_waypoint\route\responses. If you change one, change both.
  *
  * @module     mod_waypoint/common/types
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -30,7 +30,7 @@ export interface WaypointItem {
     /** The waypoint title, already cleaned server-side. */
     title: string;
     /** Position in the list. */
-    sortorder: number;
+    sortOrder: number;
     /** Whether the calling user has ticked it. */
     done: boolean;
 }
@@ -44,25 +44,65 @@ export interface WaypointProgress {
     /** Progress as a whole percentage. */
     percentage: number;
     /** A translated "x of y" label, formatted server-side. */
-    countlabel: string;
+    countLabel: string;
 }
 
-/** Everything the UI needs, as returned by every endpoint. */
-export interface WaypointState {
-    /** The waypoints, in sort order. */
-    items: WaypointItem[];
+/** The activity, with everything that belongs to it rather than to one waypoint. */
+export interface WaypointActivity {
+    /** The course module id. */
+    id: number;
+    /** The activity name. */
+    name: string;
     /** The calling user's progress. */
     progress: WaypointProgress;
     /** Whether the calling user may edit the list. */
-    canmanage: boolean;
+    canManage: boolean;
     /** Whether the calling user may tick waypoints. */
-    cantick: boolean;
+    canTick: boolean;
+}
+
+/** Where in the collection the returned page sits. */
+export interface Pagination {
+    /** The 1-based page number. */
+    page: number;
+    /** How many waypoints the page holds. */
+    pageSize: number;
+    /** How many waypoints match, across every page. */
+    totalItems: number;
+}
+
+/** One page of the waypoint collection. */
+export interface ItemPage {
+    /** The waypoints on this page. */
+    items: WaypointItem[];
+    /** Where the page sits in the collection. */
+    pagination: Pagination;
+}
+
+/** The calling user's progress against one waypoint. */
+export interface ItemProgress {
+    /** The waypoint. */
+    itemId: number;
+    /** Whether it is now ticked. */
+    done: boolean;
+    /** When it was ticked, ISO-8601 with an offset, or null if it is not. */
+    completedAt: string | null;
+}
+
+/** What to ask the collection endpoint for. */
+export interface ItemQuery {
+    /** The 1-based page to fetch. */
+    page?: number;
+    /** Keep only ticked, or only unticked, waypoints. */
+    done?: boolean;
 }
 
 /** Props passed from view.mustache. */
 export interface WaypointProps {
-    /** The course module id, used to build every API URL. */
-    cmid: number;
-    /** The state rendered server-side, so the first paint needs no request. */
-    initialstate: WaypointState;
+    /** The activity id, used to build every API URL. */
+    activityId: number;
+    /** The activity rendered server-side, so the first paint needs no request. */
+    initialActivity: WaypointActivity;
+    /** The first page of waypoints, likewise. */
+    initialItems: ItemPage;
 }

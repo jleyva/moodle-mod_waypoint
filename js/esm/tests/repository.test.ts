@@ -23,7 +23,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {addItem, deleteItem, getState, renameItem, setDone} from '../src/repository';
+import {addItem, deleteItem, getActivity, getItems, renameItem, setDone} from '../src/repository';
 
 const mockPerformGet = jest.fn();
 const mockPerformPost = jest.fn();
@@ -42,28 +42,64 @@ jest.mock('@moodle/lms/core/fetch', () => ({
     },
 }), {virtual: true});
 
-/** A minimal state payload, as every endpoint returns. */
-const state = {
-    items: [{id: 7, title: 'Read the brief', sortorder: 1, done: false}],
-    progress: {completed: 0, total: 1, percentage: 0, countlabel: '0 of 1'},
-    canmanage: true,
-    cantick: true,
+/** The activity, as its endpoint returns it. */
+const activity = {
+    id: 42,
+    name: 'Week 1 checklist',
+    progress: {completed: 0, total: 1, percentage: 0, countLabel: '0 of 1'},
+    canManage: true,
+    canTick: true,
 };
 
-/** Stand in for a fetch Response carrying that payload. */
-const response = () => ({json: () => Promise.resolve(state)});
+/** One page of waypoints, as the collection endpoint returns it. */
+const itemPage = {
+    items: [{id: 7, title: 'Read the brief', sortOrder: 1, done: false}],
+    pagination: {page: 1, pageSize: 25, totalItems: 1},
+};
+
+/** Stand in for a fetch Response carrying a payload. */
+const response = (payload: unknown) => ({json: () => Promise.resolve(payload)});
 
 describe('mod_waypoint/repository', () => {
     beforeEach(() => {
         [mockPerformGet, mockPerformPost, mockPerformPatch, mockPerformPut, mockPerformDelete]
-            .forEach((mock) => mock.mockReset().mockResolvedValue(response()));
+            .forEach((mock) => mock.mockReset().mockResolvedValue(response(itemPage)));
     });
 
-    it('fetches the activity state from the items endpoint', async() => {
-        const result = await getState(42);
+    it('fetches the activity from its own endpoint', async() => {
+        mockPerformGet.mockResolvedValue(response(activity));
 
-        expect(mockPerformGet).toHaveBeenCalledWith('mod_waypoint', '42/items');
-        expect(result).toEqual(state);
+        const result = await getActivity(42);
+
+        expect(mockPerformGet).toHaveBeenCalledWith('mod_waypoint', 'activities/42');
+        expect(result).toEqual(activity);
+    });
+
+    it('fetches the item collection with no parameters by default', async() => {
+        const result = await getItems(42);
+
+        expect(mockPerformGet).toHaveBeenCalledWith('mod_waypoint', 'activities/42/items', {params: {}});
+        expect(result).toEqual(itemPage);
+    });
+
+    it('passes the page through as a query parameter', async() => {
+        await getItems(42, {page: 3});
+
+        expect(mockPerformGet).toHaveBeenCalledWith(
+            'mod_waypoint',
+            'activities/42/items',
+            {params: {page: '3'}},
+        );
+    });
+
+    it('passes the done filter through as a string, including when it is false', async() => {
+        await getItems(42, {page: 1, done: false});
+
+        expect(mockPerformGet).toHaveBeenCalledWith(
+            'mod_waypoint',
+            'activities/42/items',
+            {params: {page: '1', done: 'false'}},
+        );
     });
 
     it('posts a new title to the items collection', async() => {
@@ -71,7 +107,7 @@ describe('mod_waypoint/repository', () => {
 
         expect(mockPerformPost).toHaveBeenCalledWith(
             'mod_waypoint',
-            '42/items',
+            'activities/42/items',
             {body: {title: 'Celebrate'}},
         );
     });
@@ -81,15 +117,21 @@ describe('mod_waypoint/repository', () => {
 
         expect(mockPerformPatch).toHaveBeenCalledWith(
             'mod_waypoint',
-            '42/items/7',
+            'activities/42/items/7',
             {body: {title: 'Read it twice'}},
         );
     });
 
-    it('deletes an individual item', async() => {
-        await deleteItem(42, 7);
+    it('deletes an individual item, and does not try to decode the 204', async() => {
+        mockPerformDelete.mockResolvedValue({
+            json: () => {
+                throw new Error('A 204 has no body to decode.');
+            },
+        });
 
-        expect(mockPerformDelete).toHaveBeenCalledWith('mod_waypoint', '42/items/7');
+        await expect(deleteItem(42, 7)).resolves.toBeUndefined();
+
+        expect(mockPerformDelete).toHaveBeenCalledWith('mod_waypoint', 'activities/42/items/7');
     });
 
     it('puts progress against an individual item', async() => {
@@ -97,7 +139,7 @@ describe('mod_waypoint/repository', () => {
 
         expect(mockPerformPut).toHaveBeenCalledWith(
             'mod_waypoint',
-            '42/progress/7',
+            'activities/42/items/7/progress',
             {body: {done: true}},
         );
     });
@@ -107,7 +149,7 @@ describe('mod_waypoint/repository', () => {
 
         expect(mockPerformPut).toHaveBeenCalledWith(
             'mod_waypoint',
-            '42/progress/7',
+            'activities/42/items/7/progress',
             {body: {done: false}},
         );
     });

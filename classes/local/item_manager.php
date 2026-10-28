@@ -144,36 +144,97 @@ class item_manager {
     }
 
     /**
-     * Fetch every waypoint, with the given user's tick state folded in.
+     * Fetch one page of waypoints, with the given user's tick state folded in.
      *
      * @param int $userid The user whose progress should be included.
-     * @return array[] A list of ['id', 'title', 'sortorder', 'done'] arrays.
+     * @param item_query|null $query The paging, sorting and filtering to apply.
+     * @return array The style guide's collection envelope: items, then pagination.
      */
-    public function get_items(int $userid): array {
+    public function get_item_page(int $userid, ?item_query $query = null): array {
         global $DB;
+
+        $query ??= new item_query();
+
+        $where = 'i.waypointid = :waypointid';
+        if ($query->done !== null) {
+            // timecompleted arrives through the LEFT JOIN, so "not ticked" is a NULL.
+            $where .= $query->done
+                ? ' AND p.timecompleted IS NOT NULL'
+                : ' AND p.timecompleted IS NULL';
+        }
 
         $sql = "SELECT i.id, i.title, i.sortorder, p.timecompleted
                   FROM {waypoint_item} i
              LEFT JOIN {waypoint_progress} p
                     ON p.itemid = i.id
                    AND p.userid = :userid
-                 WHERE i.waypointid = :waypointid
-              ORDER BY i.sortorder ASC, i.id ASC";
+                 WHERE {$where}
+              ORDER BY " . $query->get_order_by();
 
-        $records = $DB->get_records_sql($sql, [
-            'userid' => $userid,
-            'waypointid' => $this->waypoint->id,
-        ]);
-
-        return array_values(array_map(
-            fn(stdClass $record): array => [
-                'id' => (int) $record->id,
-                'title' => $record->title,
-                'sortorder' => (int) $record->sortorder,
-                'done' => $record->timecompleted !== null,
+        $records = $DB->get_records_sql(
+            $sql,
+            [
+                'userid' => $userid,
+                'waypointid' => $this->waypoint->id,
             ],
-            $records,
-        ));
+            $query->get_offset(),
+            $query->pagesize,
+        );
+
+        return [
+            'items' => array_values(array_map(self::format_item(...), $records)),
+            'pagination' => [
+                'page' => $query->page,
+                'pageSize' => $query->pagesize,
+                'totalItems' => $this->count_items($userid, $query->done),
+            ],
+        ];
+    }
+
+    /**
+     * Count the waypoints a collection request matches, ignoring its paging.
+     *
+     * @param int $userid The user whose ticks the done filter applies to.
+     * @param bool|null $done Keep only ticked, or only unticked, waypoints.
+     * @return int
+     */
+    public function count_items(int $userid, ?bool $done = null): int {
+        global $DB;
+
+        if ($done === null) {
+            return $DB->count_records('waypoint_item', ['waypointid' => $this->waypoint->id]);
+        }
+
+        $match = $done ? 'IS NOT NULL' : 'IS NULL';
+
+        return $DB->count_records_sql(
+            "SELECT COUNT(1)
+               FROM {waypoint_item} i
+          LEFT JOIN {waypoint_progress} p
+                 ON p.itemid = i.id
+                AND p.userid = :userid
+              WHERE i.waypointid = :waypointid
+                AND p.timecompleted {$match}",
+            [
+                'userid' => $userid,
+                'waypointid' => $this->waypoint->id,
+            ],
+        );
+    }
+
+    /**
+     * Shape one joined database row the way the API returns it.
+     *
+     * @param stdClass $record A row with id, title, sortorder and timecompleted.
+     * @return array
+     */
+    private static function format_item(stdClass $record): array {
+        return [
+            'id' => (int) $record->id,
+            'title' => $record->title,
+            'sortOrder' => (int) $record->sortorder,
+            'done' => $record->timecompleted !== null,
+        ];
     }
 
     /**
@@ -242,35 +303,94 @@ class item_manager {
     }
 
     /**
-     * Build the full activity state for a user.
+     * Build the activity representation for a user.
      *
-     * Every REST route returns this, so the client always receives a complete,
-     * authoritative picture rather than a partial update it has to merge.
+     * The progress summary and the capability flags live here rather than
+     * alongside the items, because a collection response may carry items and
+     * pagination and nothing else.
      *
      * @param int $userid The user whose view of the activity to build.
      * @return array
      */
-    public function get_state_payload(int $userid): array {
+    public function get_activity_payload(int $userid): array {
         $progress = $this->get_progress_for_user($userid);
 
         return [
-            'items' => $this->get_items($userid),
+            'id' => (int) $this->cm->id,
+            'name' => format_string($this->waypoint->name, true, ['context' => $this->context]),
             'progress' => [
                 'completed' => $progress->completed,
                 'total' => $progress->total,
                 'percentage' => $progress->get_percentage(),
-                'countlabel' => $progress->get_count_label(),
+                'countLabel' => $progress->get_count_label(),
             ],
-            'canmanage' => $this->can_manage(),
-            'cantick' => $this->can_tick(),
+            'canManage' => $this->can_manage(),
+            'canTick' => $this->can_tick(),
         ];
+    }
+
+    /**
+     * Fetch one waypoint, shaped the way the API returns it.
+     *
+     * @param int $itemid The waypoint to fetch.
+     * @param int $userid The user whose tick state should be reported.
+     * @return array
+     */
+    public function get_item_payload(int $itemid, int $userid): array {
+        $item = $this->get_item($itemid);
+
+        return [
+            'id' => (int) $item->id,
+            'title' => $item->title,
+            'sortOrder' => (int) $item->sortorder,
+            'done' => $this->is_done($item->id, $userid),
+        ];
+    }
+
+    /**
+     * Fetch a user's progress against one waypoint, as the API returns it.
+     *
+     * @param int $itemid The waypoint to report on.
+     * @param int $userid The user whose progress to report.
+     * @return array
+     */
+    public function get_item_progress_payload(int $itemid, int $userid): array {
+        global $DB;
+
+        $item = $this->get_item($itemid);
+        $completed = $DB->get_field('waypoint_progress', 'timecompleted', [
+            'itemid' => $item->id,
+            'userid' => $userid,
+        ]);
+
+        return [
+            'itemId' => (int) $item->id,
+            'done' => $completed !== false,
+            'completedAt' => $completed === false ? null : self::format_timestamp((int) $completed),
+        ];
+    }
+
+    /**
+     * Render a Unix timestamp the way the style guide insists on.
+     *
+     * Section 9.3 forbids Unix timestamps in responses outright, asks for
+     * ISO-8601 with an offset, and says the offset should be the calling
+     * user's own.
+     *
+     * @param int $timestamp The Unix timestamp stored in the database.
+     * @return string
+     */
+    private static function format_timestamp(int $timestamp): string {
+        return (new \DateTimeImmutable('@' . $timestamp))
+            ->setTimezone(\core_date::get_user_timezone_object())
+            ->format(\DateTimeInterface::ATOM);
     }
 
     /**
      * Add a waypoint to the end of the list.
      *
      * @param string $title The waypoint title.
-     * @return array The new item, in the same shape as get_items().
+     * @return array The new item, in the same shape as get_item_payload().
      */
     public function add_item(string $title): array {
         global $DB;
@@ -292,7 +412,7 @@ class item_manager {
         return [
             'id' => (int) $itemid,
             'title' => $title,
-            'sortorder' => ((int) $maxsort) + 1,
+            'sortOrder' => ((int) $maxsort) + 1,
             'done' => false,
         ];
     }
@@ -303,7 +423,7 @@ class item_manager {
      * @param int $itemid The waypoint to rename.
      * @param string $title The new title.
      * @param int $userid The user whose tick state should be reported back.
-     * @return array The updated item, in the same shape as get_items().
+     * @return array The updated item, in the same shape as get_item_payload().
      */
     public function rename_item(int $itemid, string $title, int $userid): array {
         global $DB;
@@ -319,7 +439,7 @@ class item_manager {
         return [
             'id' => (int) $item->id,
             'title' => $title,
-            'sortorder' => (int) $item->sortorder,
+            'sortOrder' => (int) $item->sortorder,
             'done' => $this->is_done($item->id, $userid),
         ];
     }
@@ -347,7 +467,7 @@ class item_manager {
      * @param int $itemid The waypoint to update.
      * @param bool $done Whether it is now done.
      * @param int $userid The user ticking it.
-     * @return array The updated item, in the same shape as get_items().
+     * @return array The user's progress, in the same shape as get_item_progress_payload().
      */
     public function set_item_state(int $itemid, bool $done, int $userid): array {
         global $DB;
@@ -370,12 +490,7 @@ class item_manager {
 
         $this->update_completion_for_user($userid);
 
-        return [
-            'id' => (int) $item->id,
-            'title' => $item->title,
-            'sortorder' => (int) $item->sortorder,
-            'done' => $done,
-        ];
+        return $this->get_item_progress_payload($item->id, $userid);
     }
 
     /**

@@ -18,18 +18,24 @@ namespace mod_waypoint\route\api;
 
 use core\exception\invalid_parameter_exception;
 use core\param;
-use core\router\parameters\path_coursemodule;
 use core\router\require_login;
 use core\router\route;
 use core\router\schema\objects\scalar_type;
 use core\router\schema\objects\schema_object;
 use core\router\schema\parameters\path_parameter;
+use core\router\schema\parameters\query_parameter;
 use core\router\schema\request_body;
 use core\router\schema\response\content\payload_response_type;
 use core\router\schema\response\payload_response;
 use core\router\scope\scopeset;
+use core\router\util;
 use mod_waypoint\local\item_manager;
-use mod_waypoint\route\responses\state_response;
+use mod_waypoint\local\item_query;
+use mod_waypoint\route\parameters\path_activity;
+use mod_waypoint\route\responses\created_item_response;
+use mod_waypoint\route\responses\item_collection_response;
+use mod_waypoint\route\responses\item_response;
+use mod_waypoint\route\responses\no_content_response;
 use mod_waypoint\route\scope\waypoint\manage;
 use mod_waypoint\route\scope\waypoint\read;
 use Psr\Http\Message\ResponseInterface;
@@ -37,14 +43,14 @@ use Psr\Http\Message\ServerRequestInterface;
 use stdClass;
 
 /**
- * REST API for the waypoint list itself.
+ * REST API for the waypoints inside one activity.
  *
- * The class-level route supplies the shared prefix and the course module
- * parameter. path_coursemodule does the heavy lifting: it resolves the
- * identifier (an id, or `idnumber:...`), attaches the course module record and
- * its context to the request, and returns a 404 on its own if it cannot.
+ * The class-level route supplies the shared prefix and the activity
+ * parameter. path_activity does the heavy lifting: it resolves the identifier
+ * (an id, or `idnumber:...`), attaches the course module record and its
+ * context to the request, and returns a 404 on its own if it cannot.
  *
- * Resolves to /api/rest/v2/mod_waypoint/{cm}/items
+ * Resolves to /api/rest/v2/mod_waypoint/activities/{activityId}/items
  *
  * @package    mod_waypoint
  * @copyright  2026 Moodle Pty Ltd
@@ -55,28 +61,58 @@ use stdClass;
     // never consults the class-level route, so a class-level requirelogin is
     // silently ignored — and the route ends up with no login check at all.
 #[route(
-    path: '/{cm}',
+    path: '/activities/{activityId}',
     pathtypes: [
-        new path_coursemodule(name: 'cm'),
+        new path_activity(name: 'activityId'),
     ],
 )]
 class items {
 
     /**
-     * Fetch the waypoint list and the calling user's progress through it.
+     * Fetch one page of waypoints.
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
-     * @param stdClass $cmdata The course module record, attached by path_coursemodule.
+     * @param stdClass $activitydata The course module record, attached by path_activity.
      * @return payload_response
      */
     #[route(
         path: '/items',
         method: ['GET'],
         title: 'Fetch waypoints',
-        description: 'Fetch every waypoint in the activity, with the calling user\'s progress folded in.',
+        description: 'Fetch a page of waypoints, with the calling user\'s ticks folded in.',
+        queryparams: [
+            new query_parameter(
+                name: 'page',
+                type: param::INT,
+                default: 1,
+                description: 'The 1-based page to return.',
+            ),
+            new query_parameter(
+                name: 'pagesize',
+                type: param::INT,
+                default: item_query::DEFAULT_PAGE_SIZE,
+                description: 'How many waypoints to return, up to ' . item_query::MAX_PAGE_SIZE . '.',
+            ),
+            new query_parameter(
+                name: 'sort',
+                type: param::TEXT,
+                default: 'sortorder',
+                description: 'Comma-separated sort keys from sortorder, title and id. Prefix with - for descending.',
+            ),
+            // Declared RAW, not BOOL, on purpose. Core's query_parameter
+            // throws a bare \ValueError for a BOOL it cannot read, and
+            // nothing maps that to a status — so `?done=maybe` answers 500
+            // where it should answer 400. Parsing it in item_query keeps the
+            // bad request a bad request.
+            new query_parameter(
+                name: 'done',
+                type: param::RAW,
+                description: 'Keep only the ticked waypoints (true) or only the unticked ones (false).',
+            ),
+        ],
         responses: [
-            new state_response(),
+            new item_collection_response(),
         ],
         requirelogin: new require_login(
             requirelogin: false,
@@ -90,15 +126,72 @@ class items {
     public function get_items(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        stdClass $cmdata,
+        stdClass $activitydata,
     ): payload_response {
         global $USER;
 
-        $manager = item_manager::instance_from_cmid((int) $cmdata->id);
+        $manager = item_manager::instance_from_cmid((int) $activitydata->id);
         $manager->require_can_view();
 
         return new payload_response(
-            payload: $manager->get_state_payload($USER->id),
+            payload: $manager->get_item_page(
+                userid: $USER->id,
+                query: item_query::from_query_params($request->getQueryParams()),
+            ),
+            request: $request,
+            response: $response,
+        );
+    }
+
+    /**
+     * Fetch one waypoint.
+     *
+     * This route is what the Location header of a newly created waypoint
+     * points at, so it has to exist for that header to be worth sending.
+     *
+     * @param ServerRequestInterface $request
+     * @param ResponseInterface $response
+     * @param stdClass $activitydata The course module record, attached by path_activity.
+     * @param int $itemId The waypoint to fetch.
+     * @return payload_response
+     */
+    #[route(
+        path: '/items/{itemId}',
+        method: ['GET'],
+        title: 'Fetch a waypoint',
+        description: 'Fetch a single waypoint, with the calling user\'s tick folded in.',
+        pathtypes: [
+            new path_parameter(
+                name: 'itemId',
+                type: param::INT,
+            ),
+        ],
+        responses: [
+            new item_response(),
+        ],
+        requirelogin: new require_login(
+            requirelogin: false,
+            requirecourselogin: true,
+            courseattributename: 'course',
+        ),
+    )]
+    #[scopeset(
+        new read(),
+    )]
+    public function get_item(
+        ServerRequestInterface $request,
+        ResponseInterface $response,
+        stdClass $activitydata,
+        // phpcs:ignore moodle.NamingConventions.ValidVariableName.VariableNameLowerCase
+        int $itemId,
+    ): payload_response {
+        global $USER;
+
+        $manager = item_manager::instance_from_cmid((int) $activitydata->id);
+        $manager->require_can_view();
+
+        return new payload_response(
+            payload: $manager->get_item_payload($itemId, $USER->id),
             request: $request,
             response: $response,
         );
@@ -109,7 +202,7 @@ class items {
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
-     * @param stdClass $cmdata The course module record, attached by path_coursemodule.
+     * @param stdClass $activitydata The course module record, attached by path_activity.
      * @return payload_response
      */
     #[route(
@@ -127,7 +220,7 @@ class items {
             ),
         ),
         responses: [
-            new state_response(),
+            new created_item_response(),
         ],
         requirelogin: new require_login(
             requirelogin: false,
@@ -142,18 +235,29 @@ class items {
     public function add_item(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        stdClass $cmdata,
+        stdClass $activitydata,
     ): payload_response {
-        global $USER;
-
-        $manager = item_manager::instance_from_cmid((int) $cmdata->id);
+        $manager = item_manager::instance_from_cmid((int) $activitydata->id);
         $manager->require_can_manage();
-        $manager->add_item($this->get_title_from_request($request));
+        $item = $manager->add_item($this->get_title_from_request($request));
+
+        // 201 Created, and a Location pointing at the waypoint that now
+        // exists. get_path_for_callable() builds that address from the route
+        // itself, so the two cannot drift apart.
+        $location = util::get_path_for_callable(
+            [self::class, 'get_item'],
+            [
+                'activityId' => (int) $activitydata->id,
+                'itemId' => $item['id'],
+            ],
+        );
 
         return new payload_response(
-            payload: $manager->get_state_payload($USER->id),
+            payload: $item,
             request: $request,
-            response: $response,
+            response: $response
+                ->withStatus(201)
+                ->withHeader('Location', $location->out(false)),
         );
     }
 
@@ -162,18 +266,18 @@ class items {
      *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
-     * @param stdClass $cmdata The course module record, attached by path_coursemodule.
-     * @param int $itemid The waypoint to rename.
+     * @param stdClass $activitydata The course module record, attached by path_activity.
+     * @param int $itemId The waypoint to rename.
      * @return payload_response
      */
     #[route(
-        path: '/items/{itemid}',
+        path: '/items/{itemId}',
         method: ['PATCH'],
         title: 'Rename a waypoint',
         description: 'Change the title of an existing waypoint.',
         pathtypes: [
             new path_parameter(
-                name: 'itemid',
+                name: 'itemId',
                 type: param::INT,
             ),
         ],
@@ -187,7 +291,7 @@ class items {
             ),
         ),
         responses: [
-            new state_response(),
+            new item_response(description: 'The waypoint that was renamed'),
         ],
         requirelogin: new require_login(
             requirelogin: false,
@@ -202,17 +306,17 @@ class items {
     public function rename_item(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        stdClass $cmdata,
-        int $itemid,
+        stdClass $activitydata,
+        // phpcs:ignore moodle.NamingConventions.ValidVariableName.VariableNameLowerCase
+        int $itemId,
     ): payload_response {
         global $USER;
 
-        $manager = item_manager::instance_from_cmid((int) $cmdata->id);
+        $manager = item_manager::instance_from_cmid((int) $activitydata->id);
         $manager->require_can_manage();
-        $manager->rename_item($itemid, $this->get_title_from_request($request), $USER->id);
 
         return new payload_response(
-            payload: $manager->get_state_payload($USER->id),
+            payload: $manager->rename_item($itemId, $this->get_title_from_request($request), $USER->id),
             request: $request,
             response: $response,
         );
@@ -221,25 +325,28 @@ class items {
     /**
      * Delete a waypoint and everyone's progress against it.
      *
+     * Returns the response object rather than a payload_response: there is no
+     * representation left to send, and a 204 must not carry a body.
+     *
      * @param ServerRequestInterface $request
      * @param ResponseInterface $response
-     * @param stdClass $cmdata The course module record, attached by path_coursemodule.
-     * @param int $itemid The waypoint to delete.
-     * @return payload_response
+     * @param stdClass $activitydata The course module record, attached by path_activity.
+     * @param int $itemId The waypoint to delete.
+     * @return ResponseInterface
      */
     #[route(
-        path: '/items/{itemid}',
+        path: '/items/{itemId}',
         method: ['DELETE'],
         title: 'Delete a waypoint',
         description: 'Remove a waypoint, and every user\'s progress against it.',
         pathtypes: [
             new path_parameter(
-                name: 'itemid',
+                name: 'itemId',
                 type: param::INT,
             ),
         ],
         responses: [
-            new state_response(),
+            new no_content_response(description: 'The waypoint was deleted'),
         ],
         requirelogin: new require_login(
             requirelogin: false,
@@ -254,20 +361,15 @@ class items {
     public function delete_item(
         ServerRequestInterface $request,
         ResponseInterface $response,
-        stdClass $cmdata,
-        int $itemid,
-    ): payload_response {
-        global $USER;
-
-        $manager = item_manager::instance_from_cmid((int) $cmdata->id);
+        stdClass $activitydata,
+        // phpcs:ignore moodle.NamingConventions.ValidVariableName.VariableNameLowerCase
+        int $itemId,
+    ): ResponseInterface {
+        $manager = item_manager::instance_from_cmid((int) $activitydata->id);
         $manager->require_can_manage();
-        $manager->delete_item($itemid);
+        $manager->delete_item($itemId);
 
-        return new payload_response(
-            payload: $manager->get_state_payload($USER->id),
-            request: $request,
-            response: $response,
-        );
+        return $response->withStatus(204);
     }
 
     /**

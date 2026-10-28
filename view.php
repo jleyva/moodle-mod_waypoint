@@ -47,7 +47,8 @@ $PAGE->set_activity_record($manager->waypoint);
 $completion = new completion_info($course);
 $completion->set_module_viewed($cm);
 
-$state = $manager->get_state_payload($USER->id);
+$activity = $manager->get_activity_payload($USER->id);
+$itempage = $manager->get_item_page($USER->id);
 
 // The activity header renders the description, the completion requirements and
 // the activity name on its own. Printing format_module_intro() here as well
@@ -56,13 +57,14 @@ echo $OUTPUT->header();
 
 echo $OUTPUT->render_from_template('mod_waypoint/view', [
     'reactprops' => json_encode([
-        'cmid' => (int) $cm->id,
-        'initialstate' => $state,
+        'activityId' => (int) $cm->id,
+        'initialActivity' => $activity,
+        'initialItems' => $itempage,
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-    'items' => $state['items'],
-    'hasitems' => !empty($state['items']),
-    'countlabel' => $state['progress']['countlabel'],
-    'percentage' => $state['progress']['percentage'],
+    'items' => $itempage['items'],
+    'hasitems' => !empty($itempage['items']),
+    'countlabel' => $activity['progress']['countLabel'],
+    'percentage' => $activity['progress']['percentage'],
 ]);
 
 echo $OUTPUT->footer();

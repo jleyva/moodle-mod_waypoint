@@ -28,9 +28,9 @@ interface ItemListProps {
     /** The waypoints to render, already filtered and in sort order. */
     items: WaypointItem[];
     /** Whether the user may edit the list. */
-    canmanage: boolean;
+    canManage: boolean;
     /** Whether the user may tick waypoints. */
-    cantick: boolean;
+    canTick: boolean;
     /** Whether a request is in flight. */
     busy: boolean;
     /** Called when a row's checkbox is toggled. */
@@ -42,12 +42,12 @@ interface ItemListProps {
 /**
  * Render the waypoints, or an empty-state message.
  */
-export default function ItemList({items, canmanage, cantick, busy, onToggle, onDelete}: ItemListProps) {
+export default function ItemList({items, canManage, canTick, busy, onToggle, onDelete}: ItemListProps) {
     if (items.length === 0) {
         return (
             <p className="text-muted mb-0" data-region="waypoint-empty">
                 <String
-                    identifier={canmanage ? 'nowaypointsteacher' : 'nowaypoints'}
+                    identifier={canManage ? 'nowaypointsteacher' : 'nowaypoints'}
                     component="mod_waypoint"
                 />
             </p>
@@ -60,8 +60,8 @@ export default function ItemList({items, canmanage, cantick, busy, onToggle, onD
                 <ItemRow
                     key={item.id}
                     item={item}
-                    cantick={cantick}
-                    canmanage={canmanage}
+                    canTick={canTick}
+                    canManage={canManage}
                     busy={busy}
                     onToggle={onToggle}
                     onDelete={onDelete}

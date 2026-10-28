@@ -16,9 +16,11 @@
 /**
  * Jest tests for the Waypoint root component.
  *
- * The behaviour under test is the central design decision of the plugin: every
- * repository call returns the whole activity state, and the component replaces
- * what it had rather than merging a partial update.
+ * The behaviour under test is the consequence of a REST API where each
+ * endpoint answers with the resource it addresses and nothing more: a change
+ * to one waypoint says nothing about the activity's totals, so the component
+ * refetches the activity and the current page together afterwards, and
+ * filtering has to happen on the server rather than in the page.
  *
  * @module     mod_waypoint/tests/Waypoint
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -26,7 +28,7 @@
 
 import {act, render, screen} from '@testing-library/react';
 import Waypoint from '../src/Waypoint';
-import type {WaypointState} from '../src/common/types';
+import type {ItemPage, WaypointActivity} from '../src/common/types';
 
 const mockStrings = new Map<string, Promise<string>>();
 jest.mock('@moodle/lms/core/stringUtils', () => ({
@@ -64,80 +66,114 @@ jest.mock('@moodlehq/design-system', () => ({
             <input type="checkbox" role="switch" checked={props.checked} onChange={props.onChange} />
         </label>
     ),
+    Pagination: (props: {totalPages: number; currentPage: number; onPageChange: (page: number) => void}) => (
+        <nav data-testid="pagination" data-total-pages={props.totalPages} data-current-page={props.currentPage}>
+            <button type="button" onClick={() => props.onPageChange(props.currentPage + 1)}>nextpage</button>
+        </nav>
+    ),
 }), {virtual: true});
 
 const mockSetDone = jest.fn();
 const mockDeleteItem = jest.fn();
 const mockAddItem = jest.fn();
-const mockGetState = jest.fn();
+const mockGetActivity = jest.fn();
+const mockGetItems = jest.fn();
 jest.mock('../src/repository', () => ({
     setDone: (...args: unknown[]) => mockSetDone(...args),
     deleteItem: (...args: unknown[]) => mockDeleteItem(...args),
     addItem: (...args: unknown[]) => mockAddItem(...args),
-    getState: (...args: unknown[]) => mockGetState(...args),
+    getActivity: (...args: unknown[]) => mockGetActivity(...args),
+    getItems: (...args: unknown[]) => mockGetItems(...args),
 }));
 
 /**
- * Build an activity state.
+ * Build an activity.
  *
  * @param overrides Fields to override.
  */
-function makeState(overrides: Partial<WaypointState> = {}): WaypointState {
+function makeActivity(overrides: Partial<WaypointActivity> = {}): WaypointActivity {
     return {
-        items: [
-            {id: 1, title: 'Read the brief', sortorder: 1, done: false},
-            {id: 2, title: 'Draft an outline', sortorder: 2, done: true},
-        ],
-        progress: {completed: 1, total: 2, percentage: 50, countlabel: '1 of 2'},
-        canmanage: false,
-        cantick: true,
+        id: 42,
+        name: 'Week 1 checklist',
+        progress: {completed: 1, total: 2, percentage: 50, countLabel: '1 of 2'},
+        canManage: false,
+        canTick: true,
         ...overrides,
     };
 }
 
-/** Render and flush the suspended string reads. */
-async function renderApp(state: WaypointState) {
+/**
+ * Build a page of waypoints.
+ *
+ * @param overrides Fields to override.
+ */
+function makeItems(overrides: Partial<ItemPage> = {}): ItemPage {
+    return {
+        items: [
+            {id: 1, title: 'Read the brief', sortOrder: 1, done: false},
+            {id: 2, title: 'Draft an outline', sortOrder: 2, done: true},
+        ],
+        pagination: {page: 1, pageSize: 25, totalItems: 2},
+        ...overrides,
+    };
+}
+
+/**
+ * Render and flush the suspended string reads.
+ *
+ * @param activity The activity to start from.
+ * @param items The page of waypoints to start from.
+ */
+async function renderApp(activity = makeActivity(), items = makeItems()) {
     await act(async() => {
-        render(<Waypoint cmid={42} initialstate={state} />);
+        render(<Waypoint activityId={42} initialActivity={activity} initialItems={items} />);
     });
 }
 
 describe('mod_waypoint/Waypoint', () => {
     beforeEach(() => {
-        [mockSetDone, mockDeleteItem, mockAddItem, mockGetState].forEach((mock) => mock.mockReset());
+        [mockSetDone, mockDeleteItem, mockAddItem, mockGetActivity, mockGetItems]
+            .forEach((mock) => mock.mockReset());
+        mockGetActivity.mockResolvedValue(makeActivity());
+        mockGetItems.mockResolvedValue(makeItems());
     });
 
     it('renders the server-supplied state without fetching anything', async() => {
-        await renderApp(makeState());
+        await renderApp();
 
-        expect(mockGetState).not.toHaveBeenCalled();
+        expect(mockGetActivity).not.toHaveBeenCalled();
+        expect(mockGetItems).not.toHaveBeenCalled();
         expect(screen.getByTestId('progressbar')).toHaveAttribute('data-count', '1 of 2');
         expect(screen.getAllByRole('checkbox', {checked: false})).toHaveLength(1);
     });
 
-    it('replaces its state with whatever the tick request returns', async() => {
-        mockSetDone.mockResolvedValue(makeState({
+    it('refetches the activity and the page after ticking a waypoint', async() => {
+        mockGetActivity.mockResolvedValue(makeActivity({
+            progress: {completed: 2, total: 2, percentage: 100, countLabel: '2 of 2'},
+        }));
+        mockGetItems.mockResolvedValue(makeItems({
             items: [
-                {id: 1, title: 'Read the brief', sortorder: 1, done: true},
-                {id: 2, title: 'Draft an outline', sortorder: 2, done: true},
+                {id: 1, title: 'Read the brief', sortOrder: 1, done: true},
+                {id: 2, title: 'Draft an outline', sortOrder: 2, done: true},
             ],
-            progress: {completed: 2, total: 2, percentage: 100, countlabel: '2 of 2'},
         }));
 
-        await renderApp(makeState());
+        await renderApp();
 
         await act(async() => {
             screen.getByLabelText('Read the brief').click();
         });
 
         expect(mockSetDone).toHaveBeenCalledWith(42, 1, true);
+        expect(mockGetActivity).toHaveBeenCalledWith(42);
+        expect(mockGetItems).toHaveBeenCalledWith(42, {page: 1});
         expect(screen.getByTestId('progressbar')).toHaveAttribute('data-count', '2 of 2');
     });
 
     it('offers a retry when a request fails, and keeps the old state', async() => {
         mockSetDone.mockRejectedValue(new Error('Forbidden'));
 
-        await renderApp(makeState());
+        await renderApp();
 
         await act(async() => {
             screen.getByLabelText('Read the brief').click();
@@ -149,9 +185,8 @@ describe('mod_waypoint/Waypoint', () => {
 
     it('reloads from the server when retry is pressed', async() => {
         mockSetDone.mockRejectedValue(new Error('Forbidden'));
-        mockGetState.mockResolvedValue(makeState());
 
-        await renderApp(makeState());
+        await renderApp();
 
         await act(async() => {
             screen.getByLabelText('Read the brief').click();
@@ -160,12 +195,17 @@ describe('mod_waypoint/Waypoint', () => {
             screen.getByText('retry').click();
         });
 
-        expect(mockGetState).toHaveBeenCalledWith(42);
+        expect(mockGetActivity).toHaveBeenCalledWith(42);
         expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
-    it('filters out completed waypoints when the switch is on', async() => {
-        await renderApp(makeState());
+    it('asks the server for the unticked waypoints when the switch goes on', async() => {
+        mockGetItems.mockResolvedValue(makeItems({
+            items: [{id: 1, title: 'Read the brief', sortOrder: 1, done: false}],
+            pagination: {page: 1, pageSize: 25, totalItems: 1},
+        }));
+
+        await renderApp();
 
         // The Switch carries role="switch", which replaces its implicit checkbox role,
         // so only the two item checkboxes match here.
@@ -175,18 +215,61 @@ describe('mod_waypoint/Waypoint', () => {
             screen.getByRole('switch').click();
         });
 
+        expect(mockGetItems).toHaveBeenCalledWith(42, {page: 1, done: false});
         expect(screen.queryByLabelText('Draft an outline')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Read the brief')).toBeInTheDocument();
     });
 
+    it('leaves the pager out while everything fits on one page', async() => {
+        await renderApp();
+
+        expect(screen.queryByTestId('pagination')).not.toBeInTheDocument();
+    });
+
+    it('pages through a collection that does not fit', async() => {
+        const paged = makeItems({pagination: {page: 1, pageSize: 2, totalItems: 5}});
+        mockGetItems.mockResolvedValue(makeItems({pagination: {page: 2, pageSize: 2, totalItems: 5}}));
+
+        await renderApp(makeActivity(), paged);
+
+        expect(screen.getByTestId('pagination')).toHaveAttribute('data-total-pages', '3');
+
+        await act(async() => {
+            screen.getByText('nextpage').click();
+        });
+
+        expect(mockGetItems).toHaveBeenCalledWith(42, {page: 2});
+        expect(screen.getByTestId('pagination')).toHaveAttribute('data-current-page', '2');
+    });
+
+    it('falls back to the first page when the last one empties out', async() => {
+        const lastPage = makeItems({
+            items: [{id: 5, title: 'Submit for review', sortOrder: 5, done: false}],
+            pagination: {page: 3, pageSize: 2, totalItems: 5},
+        });
+        mockGetItems
+            .mockResolvedValueOnce({items: [], pagination: {page: 3, pageSize: 2, totalItems: 4}})
+            .mockResolvedValueOnce(makeItems({pagination: {page: 1, pageSize: 2, totalItems: 4}}));
+
+        await renderApp(makeActivity({canManage: true}), lastPage);
+
+        await act(async() => {
+            screen.getByText('deletewaypoint').click();
+        });
+
+        expect(mockGetItems).toHaveBeenNthCalledWith(1, 42, {page: 3});
+        expect(mockGetItems).toHaveBeenNthCalledWith(2, 42, {page: 1});
+        expect(screen.getByTestId('pagination')).toHaveAttribute('data-current-page', '1');
+    });
+
     it('hides the add form from a user who may not manage', async() => {
-        await renderApp(makeState());
+        await renderApp();
 
         expect(screen.queryByText('addwaypoint')).not.toBeInTheDocument();
     });
 
     it('shows the add form to a user who may manage', async() => {
-        await renderApp(makeState({canmanage: true}));
+        await renderApp(makeActivity({canManage: true}));
 
         expect(screen.getAllByText('addwaypoint').length).toBeGreaterThan(0);
     });

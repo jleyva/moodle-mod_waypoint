@@ -34,7 +34,7 @@ interface ProgressSummaryProps {
  * Show how far through the list the user is.
  *
  * ProgressBar deliberately does not derive its count text from value/max — word
- * order and plural rules belong to the language pack — so countlabel arrives
+ * order and plural rules belong to the language pack — so countLabel arrives
  * from the server already translated.
  */
 export default function ProgressSummary({progress}: ProgressSummaryProps) {
@@ -45,7 +45,7 @@ export default function ProgressSummary({progress}: ProgressSummaryProps) {
         <ProgressBar
             value={progress.percentage}
             title={title}
-            count={progress.countlabel}
+            count={progress.countLabel}
             labelVariant="title-and-count"
             {...(finished ? {} : {status: 'in-progress' as const})}
         />

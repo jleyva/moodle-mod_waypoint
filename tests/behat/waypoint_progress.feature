@@ -49,6 +49,10 @@ Feature: Students tick off waypoints and see their progress
     Then I should see "0 of 3"
     And I should not see "Done"
 
+  # Hiding completed waypoints is a server-side filter: the switch re-requests
+  # the collection with done=false rather than hiding rows already on the page,
+  # because with the list paginated the rows on this page are not the whole list.
+  #
   # The design system Switch renders a visually-hidden input (1x1px, clipped) with
   # the visible control in a sibling <label for=...>. Both "I click on ... checkbox"
   # and "I set the field ... to" end up calling click() on that hidden input, which
@@ -61,6 +65,20 @@ Feature: Students tick off waypoints and see their progress
     Then I should not see "Read the assignment brief"
     And I should see "Draft an outline"
     And I should see "1 of 3"
+
+  # Twenty-five is the page size the style guide sets as the default, so these
+  # thirty-three waypoints land on two pages. Paging asks the server for the
+  # next slice rather than revealing rows the browser was already holding.
+  Scenario: A long waypoint list is paged rather than returned whole
+    Given "30" waypoints exist in the "Checklist" waypoint activity
+    And I am on the "Checklist" "waypoint activity" page logged in as "student1"
+    Then I should see "Read the assignment brief"
+    And I should see "Waypoint 01"
+    And I should not see "Waypoint 30"
+    When I click on "Next page" "button"
+    Then I should see "Waypoint 30"
+    And I should not see "Waypoint 01"
+    And I should see "0 of 33"
 
   Scenario: One student's progress is their own
     Given I am on the "Checklist" "waypoint activity" page logged in as "student1"

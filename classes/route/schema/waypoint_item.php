@@ -28,6 +28,9 @@ use core\router\schema\referenced_object;
  * #/components/schemas/ in the generated OpenAPI document and referenced by
  * every route that returns a waypoint, rather than being inlined each time.
  *
+ * Field names are camelCase because the REST style guide says JSON fields
+ * SHOULD be, even though the database columns they come from are not.
+ *
  * @package    mod_waypoint
  * @copyright  2026 Moodle Pty Ltd
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -41,7 +44,7 @@ class waypoint_item extends schema_object implements referenced_object {
             content: [
                 'id' => new scalar_type(param::INT, required: true),
                 'title' => new scalar_type(param::TEXT, required: true),
-                'sortorder' => new scalar_type(param::INT, required: true),
+                'sortOrder' => new scalar_type(param::INT, required: true),
                 'done' => new scalar_type(param::BOOL, required: true),
             ],
         );

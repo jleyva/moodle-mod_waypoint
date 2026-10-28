@@ -74,7 +74,7 @@ async function renderRow(ui: React.ReactElement) {
  * @param overrides Fields to override.
  */
 function makeItem(overrides: Partial<WaypointItem> = {}): WaypointItem {
-    return {id: 7, title: 'Read the brief', sortorder: 1, done: false, ...overrides};
+    return {id: 7, title: 'Read the brief', sortOrder: 1, done: false, ...overrides};
 }
 
 describe('mod_waypoint/ItemRow', () => {
@@ -82,7 +82,7 @@ describe('mod_waypoint/ItemRow', () => {
 
     it('renders the waypoint title against the checkbox', async() => {
         await renderRow(
-            <ItemRow item={makeItem()} cantick canmanage={false} busy={false} onToggle={noop} onDelete={noop} />
+            <ItemRow item={makeItem()} canTick canManage={false} busy={false} onToggle={noop} onDelete={noop} />
         );
 
         expect(screen.getByRole('checkbox')).not.toBeChecked();
@@ -91,7 +91,7 @@ describe('mod_waypoint/ItemRow', () => {
 
     it('checks the box and shows a badge when the waypoint is done', async() => {
         await renderRow(
-            <ItemRow item={makeItem({done: true})} cantick canmanage={false} busy={false} onToggle={noop} onDelete={noop} />
+            <ItemRow item={makeItem({done: true})} canTick canManage={false} busy={false} onToggle={noop} onDelete={noop} />
         );
 
         expect(screen.getByRole('checkbox')).toBeChecked();
@@ -100,7 +100,7 @@ describe('mod_waypoint/ItemRow', () => {
 
     it('does not show a badge while the waypoint is outstanding', async() => {
         await renderRow(
-            <ItemRow item={makeItem()} cantick canmanage={false} busy={false} onToggle={noop} onDelete={noop} />
+            <ItemRow item={makeItem()} canTick canManage={false} busy={false} onToggle={noop} onDelete={noop} />
         );
 
         expect(screen.queryByTestId('badge')).not.toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('mod_waypoint/ItemRow', () => {
         const onToggle = jest.fn();
         const item = makeItem();
         await renderRow(
-            <ItemRow item={item} cantick canmanage={false} busy={false} onToggle={onToggle} onDelete={noop} />
+            <ItemRow item={item} canTick canManage={false} busy={false} onToggle={onToggle} onDelete={noop} />
         );
 
         await act(async() => {
@@ -122,7 +122,7 @@ describe('mod_waypoint/ItemRow', () => {
 
     it('disables the checkbox for a user who may not tick', async() => {
         await renderRow(
-            <ItemRow item={makeItem()} cantick={false} canmanage={false} busy={false} onToggle={noop} onDelete={noop} />
+            <ItemRow item={makeItem()} canTick={false} canManage={false} busy={false} onToggle={noop} onDelete={noop} />
         );
 
         expect(screen.getByRole('checkbox')).toBeDisabled();
@@ -130,7 +130,7 @@ describe('mod_waypoint/ItemRow', () => {
 
     it('disables the checkbox while a request is in flight', async() => {
         await renderRow(
-            <ItemRow item={makeItem()} cantick canmanage={false} busy onToggle={noop} onDelete={noop} />
+            <ItemRow item={makeItem()} canTick canManage={false} busy onToggle={noop} onDelete={noop} />
         );
 
         expect(screen.getByRole('checkbox')).toBeDisabled();
@@ -138,7 +138,7 @@ describe('mod_waypoint/ItemRow', () => {
 
     it('hides the delete button from a user who may not manage', async() => {
         await renderRow(
-            <ItemRow item={makeItem()} cantick canmanage={false} busy={false} onToggle={noop} onDelete={noop} />
+            <ItemRow item={makeItem()} canTick canManage={false} busy={false} onToggle={noop} onDelete={noop} />
         );
 
         expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -148,7 +148,7 @@ describe('mod_waypoint/ItemRow', () => {
         const onDelete = jest.fn();
         const item = makeItem();
         await renderRow(
-            <ItemRow item={item} cantick canmanage busy={false} onToggle={noop} onDelete={onDelete} />
+            <ItemRow item={item} canTick canManage busy={false} onToggle={noop} onDelete={onDelete} />
         );
 
         await act(async() => {
