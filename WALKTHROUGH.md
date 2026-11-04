@@ -57,6 +57,22 @@ Mixing design system components with raw Bootstrap is expected. The design syste
 docs say so: it does not aim to replace Bootstrap, it defines Moodle's own
 decisions on top of it.
 
+### The catalogue tells you which variant, not just which component
+
+Easy to miss, and the reason this plugin changed after a review. Each component
+page carries usage rules, and `Button`'s say to use a danger variant "when the
+action is destructive and the consequence is significant or hard to undo".
+
+The delete button in `ItemRow.tsx` was `ghost` — low emphasis, visually quiet,
+and wrong: deleting a waypoint deletes every student's progress against it, and
+nothing brings that back. It is `outline-danger` now. Outline rather than fill
+because the same page offers outline for "when the button needs to feel
+lighter", and twenty-five solid red buttons down a checklist is not lighter.
+
+Picking components from the `.d.ts` gets you something that compiles. Reading
+the catalogue gets you something that follows the design system. They are not
+the same exercise.
+
 ### Using one
 
 ```tsx

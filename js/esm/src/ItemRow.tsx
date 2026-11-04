@@ -59,9 +59,20 @@ export default function ItemRow({item, canTick, canManage, busy, onToggle, onDel
             </div>
             {item.done && <Badge label={doneLabel} variant="success" subtle pill />}
             {canManage && (
+                /*
+                 * A danger variant because the design system says so: use one
+                 * "when the action is destructive and the consequence is
+                 * significant or hard to undo". Deleting a waypoint also
+                 * deletes every student's progress against it, and nothing
+                 * brings that back.
+                 *
+                 * Outline rather than fill to keep a list of them readable —
+                 * the catalogue offers outline for exactly that, "when the
+                 * button needs to feel lighter".
+                 */
                 <Button
                     label={deleteLabel}
-                    variant="ghost"
+                    variant="outline-danger"
                     size="sm"
                     disabled={busy}
                     onClick={() => onDelete(item)}

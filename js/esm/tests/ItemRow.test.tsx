@@ -56,8 +56,13 @@ jest.mock('@moodlehq/design-system', () => ({
     Badge: (props: {label: string; variant: string}) => (
         <span data-testid="badge" data-variant={props.variant}>{props.label}</span>
     ),
-    Button: (props: {label: string; disabled: boolean; onClick: () => void}) => (
-        <button type="button" disabled={props.disabled} onClick={props.onClick}>{props.label}</button>
+    Button: (props: {label: string; variant: string; disabled: boolean; onClick: () => void}) => (
+        <button
+            type="button"
+            data-variant={props.variant}
+            disabled={props.disabled}
+            onClick={props.onClick}
+        >{props.label}</button>
     ),
 }), {virtual: true});
 
@@ -156,5 +161,17 @@ describe('mod_waypoint/ItemRow', () => {
         });
 
         expect(onDelete).toHaveBeenCalledWith(item);
+    });
+
+    it('marks the delete button as a danger action', async() => {
+        await renderRow(
+            <ItemRow item={makeItem()} canTick canManage busy={false} onToggle={noop} onDelete={noop} />
+        );
+
+        // The design system reserves the danger variants for destructive
+        // actions that are hard to undo. Deleting a waypoint takes every
+        // student's progress with it, so this must not drift back to a
+        // low-emphasis variant.
+        expect(screen.getByRole('button').dataset.variant).toMatch(/danger/);
     });
 });

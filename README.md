@@ -151,6 +151,14 @@ server-side with `get_string()` and sent down in the payload. Worth copying.
 `<button>` elements — not links — so a Behat step has to say `"button"`, not
 `"link"`.
 
+The catalogue is not only a list of props; it carries usage rules, and they are
+worth obeying. `Button` says to use a danger variant "when the action is
+destructive and the consequence is significant or hard to undo", so the delete
+button is `outline-danger` — deleting a waypoint takes every student's progress
+with it. Outline rather than fill because the same page says outline is for
+"when the button needs to feel lighter", which a list of twenty-five of them
+needs. A Jest test pins the variant so it cannot quietly drift back.
+
 `js/esm/src/swizzle.json` declares, per component, whether a theme may eject or
 wrap it. The file, its location, the `eject`/`wrap` keys and the
 `safe` / `risky` / `prohibited` levels are all documented under
@@ -326,7 +334,7 @@ currently share the version number `2026100500` — it is 5.3's branch point, no
 The `supported` range is not a guess: the full suite has been run on both ends.
 On `MOODLE_503_STABLE` (build 20261021) and on 6.0dev, the plugin installs, the
 seven routes register, the scope identifiers resolve, `openapi.json` validates
-with no dangling references, and the same 37 PHPUnit and 27 Jest tests pass.
+with no dangling references, and the same 37 PHPUnit and 28 Jest tests pass.
 
 ```bash
 # From your Moodle root (this plugin lives at public/mod/waypoint in the new layout,
@@ -360,7 +368,7 @@ way to tell this apart from a bug in your plugin — if core's endpoint is also
 ```bash
 php public/admin/tool/phpunit/cli/util.php --buildconfig
 vendor/bin/phpunit --testsuite mod_waypoint_testsuite    # 37 tests
-npx jest public/mod/waypoint                             # 27 tests
+npx jest public/mod/waypoint                             # 28 tests
 ```
 
 TypeScript is checked separately, because the root `tsconfig.json` cannot be

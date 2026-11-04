@@ -40,11 +40,22 @@ function ItemRow({ item, canTick, canManage, busy, onToggle, onDelete }) {
       lineNumber: 60,
       columnNumber: 27
     }, this),
-    canManage && /* @__PURE__ */ jsxDEV(
+    canManage && /*
+     * A danger variant because the design system says so: use one
+     * "when the action is destructive and the consequence is
+     * significant or hard to undo". Deleting a waypoint also
+     * deletes every student's progress against it, and nothing
+     * brings that back.
+     *
+     * Outline rather than fill to keep a list of them readable —
+     * the catalogue offers outline for exactly that, "when the
+     * button needs to feel lighter".
+     */
+    /* @__PURE__ */ jsxDEV(
       Button,
       {
         label: deleteLabel,
-        variant: "ghost",
+        variant: "outline-danger",
         size: "sm",
         disabled: busy,
         onClick: () => onDelete(item)
@@ -53,7 +64,7 @@ function ItemRow({ item, canTick, canManage, busy, onToggle, onDelete }) {
       false,
       {
         fileName: "public/mod/waypoint/js/esm/src/ItemRow.tsx",
-        lineNumber: 62,
+        lineNumber: 73,
         columnNumber: 17
       },
       this
