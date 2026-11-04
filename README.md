@@ -87,10 +87,18 @@ check through `item_manager::require_can_*()`.
 
 ### 4. React, two mounting styles
 
-`templates/view.mustache` uses the `{{#react}}` Mustache helper. The markup
-*inside* the helper is a working, read-only fallback that React replaces when it
-mounts — the same progressive-enhancement pattern core uses in
-`lib/templates/editswitch.mustache` and the nav menus.
+Both styles are documented: the
+[frontend guide](https://moodledev.io/docs/5.3/guides/frontend) and
+[Mustache Helper and Autoinit](https://moodledev.io/docs/5.3/guides/javascript/react/reactautoinit)
+for the template helper, and the
+[HTML Writer API](https://moodledev.io/docs/5.3/apis/core/htmlwriter#react-component)
+for the PHP one. Read those before this section.
+
+`templates/view.mustache` uses the `{{#react}}` Mustache helper, whose block the
+docs define as "a JSON object followed by optional fallback HTML content". Here
+that fallback is a working, read-only rendering of the list — the same
+progressive-enhancement pattern core uses in `lib/templates/editswitch.mustache`
+and the nav menus.
 
 The one-line alternative, used by `block_timeline`, is:
 
@@ -99,18 +107,41 @@ echo \core\output\html_writer::react_component('@moodle/lms/mod_waypoint/Waypoin
 ```
 
 Both end up as `<div data-react-component=… data-react-props=…>`, which
-`core/react_autoinit` finds and mounts.
+`core/react_autoinit` finds and mounts. Three documented contracts apply to
+either style, and this plugin obeys all three: the component specifier must be
+`@moodle/lms/<component>/<path>`, the module must have a **default export**, and
+you must not call `createRoot` yourself on an element autoinit manages.
 
-`js/esm/src/repository.ts` is the only module that imports `core/fetch`. Views
-call the repository and never the network directly.
+**On how much to put in the props.** The docs are explicit: "React properties
+**should not** contain additional data", and templates "should pass only the
+minimal data required to initialise the component" — with an exception for small
+preloaded data, "to avoid unnecessary requests". This plugin uses that
+exception. `view.php` sends the activity and the first page of waypoints so the
+first paint needs no request, and the same rows are already in the HTML as the
+no-JavaScript fallback. It is bounded by the page size, so at most 25 records.
+If you are preloading something unbounded, you are outside the exception.
+
+`js/esm/src/repository.ts` is this plugin's **service module** — the guide's term
+for the pattern, which it describes as: "React components should avoid directly
+embedding data fetching logic where possible. Instead, data should be handled
+through service modules." It is the only module that imports `core/fetch`.
 
 ### 5. Design System components
 
 Using `@moodlehq/design-system` 5.3.0: `Checkbox`, `ProgressBar`, `Button`,
 `Badge`, `Switch`, `Pagination`.
 
-Text fields are plain Bootstrap `form-control` — the design system had no `Input`
-component at 5.3.0 (it arrives in 6.x, along with `Alert`, `Tag` and `Textarea`).
+The component catalogue is at [design.moodle.com](https://design.moodle.com),
+which the design system's
+[getting started](https://moodledev.io/general/designsystem/getting-started) page
+points to. Each component there has usage guidance, design specs, a code tab, a
+readiness status and accessibility requirements — it is the place to look first.
+What it does not tell you is which components the version *you have installed*
+actually exports, so check
+`node_modules/@moodlehq/design-system/dist/components/` for that.
+
+Text fields are plain Bootstrap `form-control`: the 5.3.0 package exports no
+`Input`. `AddItemForm.tsx` marks the spot to swap.
 
 `ProgressBar` deliberately will not derive its count text from `value`/`max`:
 word order and plural rules belong to the language pack. So `countLabel` is built
@@ -119,6 +150,15 @@ server-side with `get_string()` and sent down in the payload. Worth copying.
 `Pagination` takes `totalPages` / `currentPage` / `onPageChange` and renders
 `<button>` elements — not links — so a Behat step has to say `"button"`, not
 `"link"`.
+
+`js/esm/src/swizzle.json` declares, per component, whether a theme may eject or
+wrap it. The file, its location, the `eject`/`wrap` keys and the
+`safe` / `risky` / `prohibited` levels are all documented under
+[risk profiles](https://moodledev.io/docs/5.3/guides/javascript/react/theming#risk-profiles).
+Two things in there are easy to miss: the docs say to set levels with
+`./scripts/swizzle.mjs manifest set <specifier> <eject> <wrap>` rather than by
+hand, because a misspelt level is silently treated as unrestricted; and any
+component you leave out is added as `risky`/`risky` by the next `grunt esm`.
 
 `js/esm/src/swizzle.json` declares which components a theme may override or wrap.
 
@@ -157,22 +197,26 @@ with the evidence.
 
 ## Decisions taken without documentation
 
-A lot of this plugin could not be written from the docs. The pages on
-moodledev.io cover the `api` route group, parameters, responses and scopes; they
-say nothing about the other route groups, how React is mounted, or which design
-system components exist. The rest came from reading core's source, from core's
-own plugins, or from things failing.
-
-URL naming used to be on that list. It is not any more: the
-[REST API style guide](https://moodledev.io/docs/5.3/guides/rest/style) was
-published on 1 October 2026 and settles it, so this plugin now follows the guide
-rather than core's example. That turns out to be a real choice, not a free one —
-see below.
-
 This section exists so you can tell which parts of this plugin are *Moodle
-convention* and which are *one developer's reading of core in October 2026*. If
-a convention is published later and contradicts something here, the convention
-wins.
+convention* and which are *one developer's reading of core*. If a convention is
+published later and contradicts something here, the convention wins.
+
+**It has been wrong before, in both directions.** Two rounds of review have
+moved things *out* of it:
+
+- URL naming, which the
+  [REST API style guide](https://moodledev.io/docs/5.3/guides/rest/style)
+  settles. Following it was a real choice, not a free one — see
+  [Where the guide and core disagree](#where-the-guide-and-core-disagree).
+- React mounting, the `{{#react}}` helper, `html_writer::react_component()`,
+  service modules, `swizzle.json` and the design system catalogue. An earlier
+  draft of this file called all of those undocumented. They are not. The links
+  are in sections 4 and 5 above, and they are better than what I had inferred.
+
+So read the list below as "I did not find it", not as "it does not exist". The
+docs are at [moodledev.io](https://moodledev.io/docs/5.3/) and
+[design.moodle.com](https://design.moodle.com); look there before you take my
+word for anything here.
 
 ### Read out of core's source — likely right, but not promised API
 
@@ -180,9 +224,8 @@ wins.
 |---|---|---|
 | **Plugins may use three route groups** (`api`, `controller`, `shim`) | The constants in `route_loader_interface` and the body of `route_loader::configure_routes()`. The docs only describe `api`, and warn that "any unknown Route Group will be ignored". | A group could be made core-only. |
 | **Shim paths are relative to the plugin directory** — `/report.php`, not `/mod/waypoint/report.php` | The `componentpathcallback` in `get_all_shimmed_routes()`, which prefixes the component directory for everything except `core`. | The shim 404s. |
-| **`swizzle.json` values** `safe` / `risky` / `prohibited` | `block_timeline`'s own `swizzle.json`. I found no documentation of the file or its vocabulary. | Themes may not override as intended. |
-| **One module owns all network calls** (`repository.ts`) | `block_timeline` does this, and its docblock asserts it as a rule. It is a convention in practice, not a documented one. | Nothing; it is just a good habit. |
-| **Which design system components exist** | Read from `node_modules/@moodlehq/design-system/dist/components/index.d.ts`. The moodledev.io pages describe tokens and say components are "planned"; there is no published list, and no Storybook URL in the docs. | Imports break on upgrade. Check the `.d.ts`, not the docs. |
+| **The service module is called `repository.ts`** | The pattern is documented, the filename is not: the guide's example is `services/courses.ts`, and it says "the exact structure may differ". `repository.ts` follows `block_timeline`, which is core's only React plugin. | Nothing; it is just a name. |
+| **Which design system components the installed package exports** | `node_modules/@moodlehq/design-system/dist/components/`. [design.moodle.com](https://design.moodle.com) is the catalogue and documents each component properly, but it describes the design system, not the npm version your site happens to have — and nothing published maps design system versions to Moodle releases. | Imports break on upgrade. Check the package, then the catalogue. |
 
 ### Found by it failing, not by reading
 
@@ -244,6 +287,12 @@ These are design decisions, not conventions. Disagree freely.
   items and pagination only — but not where they should go instead. Hanging them
   off `GET /activities/{activityId}` is my reading; a separate
   `/activities/{activityId}/progress` would be just as defensible.
+- **Which swizzle level each component gets** — the root `prohibited`/`risky`,
+  the leaves `safe`/`safe`. The levels and their meanings are documented; which
+  component deserves which is not, and core's only example reaches the opposite
+  conclusion: `block_timeline` marks its root `safe` and two inner views
+  `prohibited`. Mine is the more cautious reading of a root that owns all the
+  state; theirs is defensible too.
 - **`?done=` is a filter rather than two endpoints.** §10.4 asks for filtering
   through query parameters and leaves the vocabulary open.
 - **Which fields are sortable** (`sortorder`, `title`, `id`). The guide fixes the
@@ -255,9 +304,11 @@ These are design decisions, not conventions. Disagree freely.
   the capabilities.** The docs explain how to define a scope, not how to choose
   the granularity.
 - **`{{#react}}` with a real progressive-enhancement fallback** rather than a
-  spinner. The helper's own docblock example shows `<p>Loading...</p>`; that the
-  inner markup can be a working server-rendered fallback is inferred from
-  `editswitch.mustache` and the nav templates, where core does exactly that.
+  spinner. The docs do call the block's contents "optional fallback HTML
+  content", so the role is documented; what they never say is that React
+  replaces it on mount, or that it may be a working server-rendered view rather
+  than the `<p>Loading…</p>` of their example. That part is read off
+  `editswitch.mustache` and the nav templates, where core does exactly this.
 - **The teacher report is server-rendered, with no React.** No guidance exists on
   when to reach for React in a plugin; a read-only table seemed a poor reason to
   ship a bundle.

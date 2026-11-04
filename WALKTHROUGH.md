@@ -39,10 +39,19 @@ Seventeen components at 5.3.0:
 `Choicebox` · `CloseButton` · `Dropdown` (plus ~10 sub-parts) · `FavouriteButton` ·
 `Link` · `NavPill` · `Pagination` · `ProgressBar` · `Radio` · `Switch` · `Tooltip`
 
-Worth knowing what is **not** there yet: no `Input`, `Alert`, `Tag` or `Textarea`
-until 6.0. That bites immediately, because the instinct when building a form is
-to reach for `Input`. In `AddItemForm.tsx` the text field is a plain Bootstrap
-`form-control` with a comment marking the spot to swap later.
+That list is what the installed package exports. The documentation of those
+components — usage guidance, design specs, accessibility requirements and a
+readiness status for each — is the catalogue at
+[design.moodle.com](https://design.moodle.com), which the design system's
+[getting started](https://moodledev.io/general/designsystem/getting-started) page
+points to. Go there first; come back to `dist/components/` only to check what
+the version on your site actually ships, because nothing published maps design
+system versions to Moodle releases.
+
+Worth knowing what is **not** in 5.3.0: no `Input`. That bites immediately,
+because the instinct when building a form is to reach for one. In
+`AddItemForm.tsx` the text field is a plain Bootstrap `form-control` with a
+comment marking the spot to swap later.
 
 Mixing design system components with raw Bootstrap is expected. The design system
 docs say so: it does not aim to replace Bootstrap, it defines Moodle's own
@@ -89,7 +98,9 @@ displays it. If you take one habit from this document, take that one.
 ### Swizzling
 
 `js/esm/src/swizzle.json` declares, per component, whether a theme may eject or
-wrap it:
+wrap it. The file, its location, the two operations and the three levels are
+documented under
+[risk profiles](https://moodledev.io/docs/5.3/guides/javascript/react/theming#risk-profiles):
 
 ```json
 {
@@ -98,9 +109,22 @@ wrap it:
 }
 ```
 
-The root component is prohibited because replacing it would break state handling;
-the leaves are safe. Core does the same — `block_timeline` marks its two view
-components prohibited and the rest safe.
+The root is prohibited here because replacing it would break state handling, and
+the leaves are safe. That is a judgement, not a rule: the docs define what each
+level *means* but say nothing about which component deserves which, and core's
+only example reaches the opposite conclusion — `block_timeline` marks its root
+`Timeline` safe, and two inner view components prohibited.
+
+Two things the docs say that are easy to miss. Set the levels with the CLI, not
+by hand:
+
+```bash
+node scripts/swizzle.mjs manifest set @moodle/lms/mod_waypoint/Waypoint prohibited risky
+```
+
+because a misspelt level is not recognised by the safety gate and silently
+behaves as unrestricted. And a component you leave out of the file does not stay
+out: the next `grunt esm` adds it as `risky`/`risky`.
 
 ---
 
@@ -185,6 +209,12 @@ the theme override slot for swizzling, wired up automatically.
 
 ### Two ways to mount a component
 
+Both are documented — the
+[Mustache Helper and Autoinit](https://moodledev.io/docs/5.3/guides/javascript/react/reactautoinit)
+page for the helper, the
+[HTML Writer API](https://moodledev.io/docs/5.3/apis/core/htmlwriter#react-component)
+for the PHP call — and neither page tells you which to pick.
+
 **From PHP, in one line** — what `block_timeline` does:
 
 ```php
@@ -211,8 +241,13 @@ echo \core\output\html_writer::react_component(
 
 Both emit `<div data-react-component="…" data-react-props="…">`. The difference is
 that the helper lets you put markup **inside** the section, and React replaces it
-on mount. That markup is a progressive-enhancement fallback: somebody with no
-JavaScript sees their list and their progress, they just cannot tick anything.
+on mount.
+
+The docs call that inner markup "optional fallback HTML content" and show
+`<p>Loading…</p>`. They never say React replaces it, and they never suggest it
+could be anything more than a placeholder. It can: here it is a
+progressive-enhancement fallback, so somebody with no JavaScript sees their list
+and their progress — they just cannot tick anything.
 
 Core does this in three places — `editswitch.mustache`, `primarymoremenu.mustache`
 and `secondarymoremenu.mustache`. The edit switch template carries a warning that
@@ -221,6 +256,34 @@ both need updating. They treat the fallback as a maintained artefact, not a
 throwaway spinner.
 
 ### What mounts it
+
+### How much belongs in the props
+
+The docs push back on what this plugin does, so it is worth being explicit. The
+HTML Writer page says to "limit the properties to only the initial configuration
+and preferences", and that "React properties **should not** contain additional
+data". The frontend guide says the same: "Templates should pass only the minimal
+data required to initialise the component", and "if the data can be fetched by
+the component, it should not be passed via props".
+
+Then it leaves a door open: small preloaded data "may be passed to avoid
+unnecessary requests". This plugin walks through that door. `view.php` sends the
+activity and the first page of waypoints, which buys a first paint with no
+request at all, and those same rows are already in the HTML anyway as the
+no-JavaScript fallback — so the only cost is the JSON, not a round trip.
+
+What keeps it honest is the page size. Before the list was paginated the props
+grew without limit, which was indefensible; now it is at most 25 records. If
+what you want to preload has no ceiling, you are outside the exception and
+should fetch on mount instead.
+
+### The contracts
+
+Three contracts from the docs, all easy to get wrong and all silent when you do.
+The specifier must be `@moodle/lms/<component>/<path>`, resolved through the
+import map to `js/esm/build/`. The module must have a **default export** — a
+named export alone logs a warning and does not mount. And you must never call
+`createRoot` yourself on an element autoinit manages.
 
 `core/react_autoinit` runs on every page. It scans for `[data-react-component]`,
 dynamically imports the module, parses the props out of the JSON attribute and
@@ -239,10 +302,18 @@ initialiser.
 | `AddItemForm.tsx` | the teacher's field and button |
 | `repository.ts` | **the only module that touches the network** |
 
-Components call the repository; components never call `Fetch`. Core follows the
-same convention in `block_timeline`. It is worth keeping, because that is exactly
-the seam where the old external-functions API used to plug in — if Moodle changes
-how you call the server again, you change one file.
+That last one is what the frontend guide calls a **service module**: "React
+components should avoid directly embedding data fetching logic where possible.
+Instead, data should be handled through service modules", which must "encapsulate
+API calls", "handle request / response transformations" and "remain independent
+of the UI". The guide's own example names the folder `services/` and says "the
+exact structure may differ"; `repository.ts` is the name `block_timeline` uses,
+and core is the precedent worth matching here.
+
+Components call the repository; components never call `Fetch`. It is worth
+keeping, because that is exactly the seam where the old external-functions API
+used to plug in — if Moodle changes how you call the server again, you change one
+file.
 
 There is a second, less obvious payoff. `Fetch` wraps every request in a
 `Pending`:

@@ -1,9 +1,5 @@
 {
-  "Waypoint": {
-    "eject": "prohibited",
-    "wrap": "risky"
-  },
-  "ProgressSummary": {
+  "AddItemForm": {
     "eject": "safe",
     "wrap": "safe"
   },
@@ -15,8 +11,12 @@
     "eject": "safe",
     "wrap": "safe"
   },
-  "AddItemForm": {
+  "ProgressSummary": {
     "eject": "safe",
     "wrap": "safe"
+  },
+  "Waypoint": {
+    "eject": "prohibited",
+    "wrap": "risky"
   }
 }

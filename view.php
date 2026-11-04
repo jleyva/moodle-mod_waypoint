@@ -55,6 +55,11 @@ $itempage = $manager->get_item_page($USER->id);
 // would show the description twice.
 echo $OUTPUT->header();
 
+// The props carry real data, not just configuration, which the docs discourage:
+// "React properties should not contain additional data". They allow it for small
+// preloaded data "to avoid unnecessary requests", which is the case here — the
+// first paint needs no request, and these same rows are already in the markup as
+// the no-JavaScript fallback. The page size is what bounds it to 25 records.
 echo $OUTPUT->render_from_template('mod_waypoint/view', [
     'reactprops' => json_encode([
         'activityId' => (int) $cm->id,

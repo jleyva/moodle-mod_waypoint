@@ -1,9 +1,18 @@
 import o from"@moodle/lms/core/fetch";/**
- * Data-access layer for mod_waypoint.
+ * Service module for mod_waypoint.
  *
- * The only module that talks to the network. Components call these functions
- * and never import core/fetch themselves, which keeps the REST API an
- * implementation detail of this one file.
+ * "Service module" is the frontend guide's term: components should not embed
+ * data fetching, and should go through a module that encapsulates the API
+ * calls, handles request and response transformations, and stays independent
+ * of the UI. See https://moodledev.io/docs/5.3/guides/frontend
+ *
+ * The guide's example names the folder services/; this file follows
+ * block_timeline, which is core's own React plugin, and the guide allows for it:
+ * "the exact structure may differ".
+ *
+ * So: the only module that talks to the network. Components call these
+ * functions and never import core/fetch themselves, which keeps the REST API
+ * an implementation detail of this one file.
  *
  * Each function returns the resource its endpoint returns, not the whole
  * activity. Refreshing everything after a change therefore takes two
